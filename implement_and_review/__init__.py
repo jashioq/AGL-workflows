@@ -28,15 +28,23 @@ async def implement_and_review(run: Run[Parameters]) -> None:
     await run.step(implementing, request, commit="implement what the run was asked for")
 
     # Review and fix loop
-    for _ in range(MAX_ROUNDS):
+    for round_number in range(MAX_ROUNDS):
         review = await run.step(reviewing, request)
         if not review.findings:
             return
-        await run.step(implementing, request, review, commit="fix what the review found")
+
+        # If after MAX_ROUNDS review rounds issues are still found - stop.
+        if round_number == MAX_ROUNDS - 1:
+            break
+        await run.step(
+            implementing,
+            request,
+            review,
+            commit=f"fix what review round {round_number + 1} found",
+        )
     findings = "\n".join(review.findings)
 
-    # If after MAX_ROUNDS review rounds issues are still found - stop.
     raise Stop(
-        f"{MAX_ROUNDS} review rounds and the last one still had findings. They went back to the "
-        f"implementer and nothing has reviewed that fix:\n\n{findings}"
+        f"{MAX_ROUNDS} review rounds and the last one still had findings. They were not sent "
+        f"back to the implementer:\n\n{findings}"
     )
