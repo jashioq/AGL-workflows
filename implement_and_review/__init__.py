@@ -45,6 +45,5 @@ async def implement_and_review(run: Run[Parameters]) -> None:
     findings = "\n".join(review.findings)
 
     raise Stop(
-        f"{MAX_ROUNDS} review rounds and the last one still had findings. They were not sent "
-        f"back to the implementer:\n\n{findings}"
+        f"{MAX_ROUNDS} review rounds and the last one still had findings:\n\n{findings}"
     )
