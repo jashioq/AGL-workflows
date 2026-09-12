@@ -12,11 +12,13 @@ from agl.sdk import (
     role,
 )
 
+
 @dataclass(frozen=True, slots=True)
 class Review:
     findings: list[str] = describe(
         "each finding as one markdown item saying where and what is wrong; empty when there are none"
     )
+
 
 def record_review() -> ReportingTool[Review]:
     return reporting_tool(
@@ -25,6 +27,7 @@ def record_review() -> ReportingTool[Review]:
         Review,
     )
 
+
 @role(model=Claude.OPUS, accepts=(str, Review))
 def implementer(watch: ActivityReporter) -> Role[None]:
     return Role(
@@ -32,6 +35,7 @@ def implementer(watch: ActivityReporter) -> Role[None]:
         instructions=prompt_file("prompts/implement.md"),
         on_activity=watch,
     )
+
 
 @role(model=OpenAI.SOL, accepts=(str,))
 def reviewer(watch: ActivityReporter) -> Role[Review]:
