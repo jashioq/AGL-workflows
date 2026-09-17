@@ -29,7 +29,7 @@ _AGL: Final = Path(sys.executable).parent / "agl"
 
 @dataclass(frozen=True, slots=True)
 class Design:
-    """The shape the designer proposes, and, once approved, the builder's brief and the yardstick."""
+    """The shape the designer proposes, and once approved the builder's brief and the yardstick."""
 
     name: str = describe(
         "The new workflow's name: its directory, its module and the name `agl run` takes. Lower "
@@ -54,15 +54,15 @@ class Asked:
     question: str = describe("What you are asking, in full, in your own words.")
 
     options: tuple[str, ...] = describe(
-        "The answers you are suggesting, if any. Each one is the exact text that comes back as the "
-        "answer, so write them as answers rather than as labels.",
+        "The answers you are suggesting, if any. Each one is the exact text that comes back "
+        "as the answer, so write them as answers rather than as labels.",
         default=(),
     )
 
 
 @dataclass(frozen=True, slots=True)
 class Changes:
-    """What the person typed at the approval screen, which is the next design round's instruction."""
+    """What the person typed at the approval screen: the next design round's whole instruction."""
 
     asked: str
 
@@ -74,7 +74,7 @@ class Changes:
 
 @dataclass(frozen=True, slots=True)
 class Loaded:
-    """What the loader check said: a review that only reads source passes a workflow that refuses."""
+    """What the loader check said. A review that only reads source passes a workflow refuses."""
 
     passed: bool
 
@@ -93,11 +93,11 @@ class Review:
 
 
 def loader_check(name: str) -> str:
-    """The command that decides the new workflow loads, run in a throwaway AGL home holding only it.
+    """The command that decides the new workflow loads, in a throwaway AGL home holding only it.
 
     Two commands and not one. `agl workflows` reads what each workspace directory declares and
     imports nothing, so it lists a workflow whose first line raises; `agl workflows <name>` is the
-    one that imports the module, calls its role factories and settles `accepts=` against the prompt.
+    one that imports the module, calls its role factories and settles `accepts=` against a prompt.
 
     :param name: the new workflow's directory in this checkout, which is also its declared name
     :return: one shell command; the temporary home is taken away whichever way the check went

@@ -54,7 +54,11 @@ every workflow here is written in. Read it and compare:
 - `pyproject.toml` declares the entry point, leaves `[project] dependencies` empty, and sets
   `[tool.agl] requires`.
 
-**3. It is correct where the SDK is unforgiving.** These are the ones a reading misses:
+**3. It is correct where the SDK is unforgiving.** These are the ones a reading misses. Where you
+need to check the SDK itself, read the installed one — `python3 -c "import agl.sdk;
+print(agl.sdk.__file__)"` names it — and not a checkout of AGL you happen to find on this machine:
+a checkout can be a version ahead of what this workflow will run on, and a rule you take from it
+may not exist here. Do not go hunting the filesystem for it.
 
 - `accepts=` names every type the prompt places, and no others. A placeholder is the accepted
   type's own name between doubled braces; the two sections above, where this prompt's own inputs

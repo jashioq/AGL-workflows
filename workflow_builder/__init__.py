@@ -19,7 +19,9 @@ NOTHING_SAID: Final = Changes("")
 # Run parameters, supplied by the user
 @dataclass(frozen=True, slots=True)
 class Parameters:
-    request: str = arg("-r", "--request", help="what the new workflow should do, in a sentence or two")
+    request: str = arg(
+        "-r", "--request", help="what the new workflow should do, in a sentence or two"
+    )
 
     def __post_init__(self) -> None:
         if not self.request.strip():

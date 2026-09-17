@@ -11,8 +11,8 @@ _DESCRIPTION: Final = (
     "Ask the person running this workflow a question, and wait for their answer. Use it when the "
     "decision is genuinely theirs - which of two shapes to build, whether a name is right, what a "
     "vague request meant - rather than guessing. It is not for anything you could settle by "
-    "reading the repository. Each call is one question and returns one answer, and you may call it "
-    "as often as you need."
+    "reading the repository. Each call is one question and returns one answer, and you may "
+    "call it as often as you need."
 )
 
 NO_QUESTION: Final = (
@@ -33,7 +33,7 @@ def asking(terminal: Terminal) -> Tool:
     calls it by name, and this handler waits on the terminal for the answer before returning. There
     is no callback on `Role` for this and there was one once: it was taken off deliberately.
 
-    :param terminal: the run's own, so the question queues in front of the board rather than over it
+    :param terminal: the run's own, so a question queues in front of the board rather than over it
     :return: a tool to put on a role; the same object may go on every role that offers one
     """
 
