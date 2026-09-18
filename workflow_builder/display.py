@@ -1,24 +1,6 @@
 from time import monotonic
-from typing import Final
-
-from agl.sdk import Choice, Response, Row, Rows, Screen, TextInput
-
-from .roles import Asked, Changes, Design
-
-# The activity line is padded and cut to this because the SDK's terminal reports no width: a row
-# goes into a grid that wraps what it cannot fit, so an unbounded line turns three rows into six
-# and the board jumps about. Padded as well as cut so what sits beside it stays still.
-_ACTIVITY: Final = 58
-
-# Long enough for the longest label this workflow binds below, so the activity column does not
-# shift when one role takes over from another.
-_WHO: Final = 8
-
-APPROVE: Final = "Approve - write the spec and build it"
-
-CHANGE: Final = "Say what you want changed"
-
-FREE_TEXT: Final = "Answer in your own words"
+from agl.sdk import Choice, Row, Rows, Screen, Terminal, TextInput, Tool, ToolResult, tool
+from .roles import Asked, Design
 
 now = {"agent": "", "line": ""}
 
@@ -28,35 +10,47 @@ def report(agent: str, line: str) -> None:
     now["line"] = line
 
 
+# on_activity starts with an agent's first tool call, so each step's start is marked by hand
+def began(agent: str, line: str = "") -> None:
+    report(agent, line)
+
+
 def board(*, since: float) -> Screen:
     return Screen(
         Rows([
             Row(f"workflow builder  {_elapsed(since)}"),
             Row(""),
-            Row(f"{now['agent']:<{_WHO}.{_WHO}}  {now['line']:<{_ACTIVITY}.{_ACTIVITY}}"),
+            Row(f"{now['agent']}  {now['line'][:60]}"),
         ])
     )
 
 
-def approval(*, design: Design) -> Screen[Changes | None]:
+def approval(*, design: Design) -> Screen[str | None]:
+    # One row per line, or the grid rewraps the diagram
+    lines = [design.name, "", *design.diagram.splitlines(), "", *design.summary.splitlines()]
     return Screen(
-        Rows([Row(line) for line in _proposed(design)]),
-        [Choice(APPROVE, value=None), TextInput(CHANGE, maps=Changes)],
+        Rows([Row(line) for line in lines]),
+        [Choice("Approve and build it", value=None), TextInput("Ask for a change", maps=str.strip)],
     )
 
 
 def question(*, asked: Asked) -> Screen[str]:
-    responses: list[Response[str]] = [Choice(option, value=option) for option in asked.options]
-    # Offered last and always: an option the model did not think of is the answer worth having,
-    # and a question whose every answer was written by the agent is not really being asked.
-    responses.append(TextInput(FREE_TEXT, maps=str))
-    return Screen(asked.question, responses)
+    # Typing is always offered - the answer the agent did not think of is the one worth having
+    choices = [Choice(option, value=option) for option in asked.options]
+    return Screen(asked.question, [*choices, TextInput("Answer in your own words", maps=str.strip)])
 
 
-# One row per line, because a grid cell holding newlines is drawn as one cell and rewrapped: the
-# diagram is only a diagram for as long as its lines stay where the designer put them.
-def _proposed(design: Design) -> tuple[str, ...]:
-    return (design.name, "", *design.diagram.splitlines(), "", *design.summary.splitlines())
+def asking(terminal: Terminal) -> Tool:
+    async def answered(asked: Asked) -> ToolResult:
+        answer = await terminal.show(question, asked=asked)
+        return ToolResult(text=answer or "They typed nothing, so use your own judgement.")
+
+    return tool(
+        "ask_the_person",
+        "Ask the person running this workflow a question, and wait for their answer.",
+        Asked,
+        answered,
+    )
 
 
 def _elapsed(since: float) -> str:
