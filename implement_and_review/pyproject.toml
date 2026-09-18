@@ -1,9 +1,0 @@
-[project]
-name = "implement_and_review"
-version = "0.1.0"
-
-[project.entry-points."agl.workflows"]
-implement_and_review = "implement_and_review:implement_and_review"
-
-[tool.agl]
-requires = "agents-gl>=0.0.5"

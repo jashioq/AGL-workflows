@@ -1,32 +1,37 @@
-import sys
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
+import agl.sdk
 from agl.sdk import (
-    ActivityReporter,
     Claude,
     ClaudeEffort,
-    ReportingTool,
     Restriction,
     Role,
-    Tool,
+    ToolResult,
     VerifierOutcome,
     describe,
     prompt_file,
     reporting_tool,
     role,
+    tool,
 )
+from .display import answer, report
 
 
 @dataclass(frozen=True, slots=True)
-class Design:
+class Spec:
     name: str = describe("the workflow's name, lower_snake_case: its directory, module and command")
-    diagram: str = describe("the shape in plain characters, at most 70 columns wide")
-    summary: str = describe("at most four lines of 70 characters: the decisions behind the shape")
-
-
-@dataclass(frozen=True, slots=True)
-class Changes:
-    asked: str
+    does: str = describe("what the workflow does and who runs it, in a paragraph")
+    shape: str = describe(
+        "the diagram, plain characters at most 70 columns wide, then one line per step in the "
+        "order it runs: its role, what it is handed, what it reports, what it commits; no code"
+    )
+    roles: list[str] = describe(
+        "one line per role: its name, model and effort, and every restriction"
+    )
+    decisions: list[str] = describe(
+        "what the person decided: each design they turned down and why, each thing they said matters"
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,65 +43,99 @@ class Review:
 
 @dataclass(frozen=True, slots=True)
 class Asked:
-    question: str = describe("what you are asking, in full")
+    question: str = describe("what you are asking, in full; a design is shown here line by line")
     options: tuple[str, ...] = describe("answers to offer, each worded as the answer", default=())
 
 
-def record_design() -> ReportingTool[Design]:
-    return reporting_tool(
-        "record_design",
-        "Record the shape you are proposing. Call it exactly once, at the end of your turn.",
-        Design,
-    )
+async def answered(asked: Asked) -> ToolResult:
+    said = await answer(asked.question, asked.options)
+    return ToolResult(text=said or "They typed nothing, so use your own judgement.")
 
 
-def record_review() -> ReportingTool[Review]:
-    return reporting_tool(
-        "record_review",
-        "Record this review's findings. Call it exactly once, at the end, even when there are none.",
-        Review,
-    )
+ask = tool(
+    "ask_the_person",
+    "Ask the person running this workflow a question, and wait for their answer.",
+    Asked,
+    answered,
+)
+
+record_spec = reporting_tool(
+    "record_spec",
+    "Record the spec of the design the person approved. Call it exactly once, after they approve.",
+    Spec,
+)
+
+record_review = reporting_tool(
+    "record_review",
+    "Record this review's findings. Call it exactly once, at the end, even when there are none.",
+    Review,
+)
 
 
-def loader_check(name: str) -> str:
-    # The agl running this workflow, since one started as .venv/bin/agl puts nothing on PATH
-    agl = Path(sys.executable).with_name("agl")
-    # A throwaway AGL_HOME, so loading the new workflow never installs it into the user's own
+def instructions(prompt: str, guidelines: str) -> str:
+    # The agent works in the run's checkout, which holds neither the guidelines nor the SDK
+    sdk = Path(agl.sdk.__file__).parent
     return (
-        f'export AGL_HOME="$(mktemp -d)" && trap \'rm -rf "$AGL_HOME"\' EXIT && mkdir -p '
-        f'"$AGL_HOME/workspace/workflows" && cp -R {name} "$AGL_HOME/workspace/workflows" && '
-        f"{agl} workflows && {agl} workflows {name}"
+        f"{prompt_file(prompt)}\n{prompt_file(guidelines)}\n"
+        f"The AGL SDK this run is on is {sdk}. Read it there, never a copy of AGL found elsewhere.\n"
     )
 
 
-@role(model=Claude.OPUS(effort=ClaudeEffort.HIGH), accepts=(str, Design, Changes))
-def designer(watch: ActivityReporter, ask: Tool) -> Role[Design]:
+@role(model=Claude.OPUS(effort=ClaudeEffort.HIGH), accepts=(str,))
+def designer() -> Role[Spec]:
     return Role(
         name="design",
-        instructions=prompt_file("prompts/design.md"),
-        restrictions={Restriction.NO_VCS_WRITES},
-        tools=(ask, record_design()),
-        on_activity=watch,
+        instructions=instructions("prompts/design.md", "BUILDER_GUIDELINES.md"),
+        restrictions={
+            Restriction.NO_FILE_WRITES,
+            Restriction.NO_VCS_WRITES,
+        },
+        tools=(ask, record_spec),
+        on_activity=partial(report, "design"),
     )
 
 
-@role(model=Claude.SONNET(effort=ClaudeEffort.MEDIUM), accepts=(Design, Review))
-def builder(watch: ActivityReporter, ask: Tool) -> Role[None]:
+@role(model=Claude.SONNET(effort=ClaudeEffort.MEDIUM), accepts=(Spec, Review))
+def builder() -> Role[None]:
     return Role(
         name="build",
-        instructions=prompt_file("prompts/build.md"),
+        instructions=instructions("prompts/build.md", "BUILDER_GUIDELINES.md"),
         restrictions={Restriction.NO_VCS_WRITES},
-        tools=(ask,),
-        on_activity=watch,
+        on_activity=partial(report, "build"),
     )
 
 
-@role(model=Claude.OPUS(effort=ClaudeEffort.HIGH), accepts=(Design, VerifierOutcome))
-def reviewer(watch: ActivityReporter, ask: Tool) -> Role[Review]:
+@role(model=Claude.OPUS(effort=ClaudeEffort.HIGH), accepts=(Spec, VerifierOutcome))
+def build_reviewer() -> Role[Review]:
     return Role(
-        name="review",
-        instructions=prompt_file("prompts/review.md"),
+        name="build-review",
+        instructions=instructions("prompts/build_review.md", "BUILDER_GUIDELINES.md"),
+        restrictions={
+            Restriction.NO_FILE_WRITES,
+            Restriction.NO_VCS_WRITES,
+        },
+        tools=(record_review,),
+        on_activity=partial(report, "build-review"),
+    )
+
+
+@role(model=Claude.OPUS(effort=ClaudeEffort.HIGH), accepts=(Spec, Review))
+def cleaner() -> Role[None]:
+    return Role(
+        name="clean",
+        instructions=instructions("prompts/clean.md", "CLEANER_GUIDELINES.md"),
+        restrictions={Restriction.NO_VCS_WRITES},
+        on_activity=partial(report, "clean"),
+    )
+
+
+# Keeps its shell for the one thing it cannot judge without: git diff of what cleaning changed
+@role(model=Claude.OPUS(effort=ClaudeEffort.HIGH), accepts=(Spec, VerifierOutcome))
+def clean_reviewer() -> Role[Review]:
+    return Role(
+        name="clean-review",
+        instructions=instructions("prompts/clean_review.md", "CLEANER_GUIDELINES.md"),
         restrictions={Restriction.NO_FILE_WRITES, Restriction.NO_VCS_WRITES},
-        tools=(ask, record_review()),
-        on_activity=watch,
+        tools=(record_review,),
+        on_activity=partial(report, "clean-review"),
     )

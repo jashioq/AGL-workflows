@@ -1,64 +1,95 @@
+import sys
 from dataclasses import dataclass
-from functools import partial
-from time import monotonic
+from pathlib import Path
 from typing import Final
-from agl.sdk import Run, Stop, arg, workflow
-from .display import approval, asking, began, board, report
-from .roles import Changes, builder, designer, loader_check, reviewer
+from agl.sdk import Role, Run, Stop, arg, workflow
+from .display import began, opened, report
+from .roles import (
+    Review,
+    Spec,
+    build_reviewer,
+    builder,
+    clean_reviewer,
+    cleaner,
+    designer,
+)
 
 MAX_ROUNDS: Final = 3
 
+
 @dataclass(frozen=True, slots=True)
 class Parameters:
-    request: str = arg("-r", "--request", help="the workflow you want built, in a sentence or two")
+    request: str = arg("-r", "--request", help="the workflow you want built")
+
+
+designing = designer()
+building = builder()
+reviewing_build = build_reviewer()
+cleaning = cleaner()
+reviewing_clean = clean_reviewer()
+
 
 @workflow
 async def workflow_builder(run: Run[Parameters]) -> None:
-    await run.terminal.show(board, since=monotonic())
+    await opened(run.terminal)
 
-    # Bound in here rather than at module level, because the ask tool needs this run's terminal
-    ask = asking(run.terminal)
-    designing = designer(watch=partial(report, "designer"), ask=ask)
-    building = builder(watch=partial(report, "builder"), ask=ask)
-    reviewing = reviewer(watch=partial(report, "reviewer"), ask=ask)
+    began(designing)
+    spec = await run.step(designing, run.params.request)
 
-    request = run.params.request
+    began(building)
+    await run.step(building, spec, commit=f"build {spec.name}")
 
-    # No cap on design rounds - each one waits on the person, so they decide when it ends
-    began("designer")
-    design = await run.step(designing, request, commit="write the design down as a spec")
-    while (answer := await run.terminal.show(approval, design=design)) is not None:
-        # A blank answer is neither an approval nor a change, so the screen just comes back
-        if answer:
-            began("designer")
-            changes = Changes(answer)
-            design = await run.step(designing, request, design, changes, commit="revise the spec")
-
-    began("builder")
-    await run.step(building, design, commit=f"build {design.name}")
-
-    # Review and fix loop, capped because nobody is watching the agents answer each other
+    # Review loop
     for round_number in range(MAX_ROUNDS):
-        began("agl", f"agl workflows {design.name}")
-        # Load it in this run's own checkout, so the reviewer starts from a verdict, not a guess
-        loaded = await run.verify(loader_check(design.name))
-        began("reviewer")
-        review = await run.step(reviewing, design, loaded)
+        review = await reviewed(run, reviewing_build, spec)
         if not review.findings:
-            return
-
-        # If after MAX_ROUNDS review rounds issues are still found - stop.
-        if round_number == MAX_ROUNDS - 1:
             break
-        began("builder")
+        if round_number == MAX_ROUNDS - 1:
+            findings = "\n".join(review.findings)
+            raise Stop(
+                f"{MAX_ROUNDS} build reviews and the last one still had findings:\n\n{findings}"
+            )
+        began(building)
         await run.step(
             building,
-            design,
+            spec,
             review,
-            commit=f"fix what review round {round_number + 1} found",
+            commit=f"fix what build review round {round_number + 1} found",
         )
-    findings = "\n".join(review.findings)
 
-    raise Stop(
-        f"{MAX_ROUNDS} review rounds and the last one still had findings:\n\n{findings}"
+    began(cleaning)
+    await run.step(cleaning, spec, commit=f"clean up {spec.name}")
+    for round_number in range(MAX_ROUNDS):
+        review = await reviewed(run, reviewing_clean, spec)
+        if not review.findings:
+            break
+        if round_number == MAX_ROUNDS - 1:
+            findings = "\n".join(review.findings)
+            raise Stop(
+                f"{MAX_ROUNDS} clean reviews and the last one still had findings:\n\n{findings}"
+            )
+        began(cleaning)
+        await run.step(
+            cleaning,
+            spec,
+            review,
+            commit=f"fix what clean review round {round_number + 1} found",
+        )
+
+
+async def reviewed(run: Run[Parameters], reviewing: Role[Review], spec: Spec) -> Review:
+    report("agl", f"agl workflows {spec.name}")
+    loaded = await run.verify(loader_check(spec.name))
+    began(reviewing)
+    return await run.step(reviewing, spec, loaded)
+
+
+def loader_check(name: str) -> str:
+    # The agl running this workflow, since one started as .venv/bin/agl puts nothing on PATH
+    agl = Path(sys.executable).with_name("agl")
+    # A throwaway AGL_HOME, so loading the new workflow never installs it into the user's own
+    return (
+        f'export AGL_HOME="$(mktemp -d)" && trap \'rm -rf "$AGL_HOME"\' EXIT && mkdir -p '
+        f'"$AGL_HOME/workspace/workflows" && cp -R {name} "$AGL_HOME/workspace/workflows" && '
+        f"{agl} workflows && {agl} workflows {name}"
     )
