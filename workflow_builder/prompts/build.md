@@ -13,6 +13,8 @@ It is a JSON object, and it is the whole of your brief:
 - `roles` gives each role's model, effort and restrictions.
 - `decisions` is what the person decided along the way.
 
+If it reads `Not provided`, stop at once and write nothing.
+
 Build exactly what it says. Where it is silent, choose the reading a careful colleague would, and
 say which one in your closing message.
 

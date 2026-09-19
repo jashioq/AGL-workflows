@@ -99,7 +99,20 @@ name between doubled braces, and no other placeholder may appear. (This file wri
 - Padded braces such as `{{ <Review> }}` are refused.
 - Every occurrence is substituted, including one mentioned in passing in a sentence.
 - Inputs arrive as canonical JSON. Say which fields the prompt reads.
-- A type the step did not pass renders exactly `Not provided`. Say what that means for it.
+- A type the step did not pass renders exactly `Not provided`, and the prompt says what that
+  means for every input. Judge each one: is there a run of this workflow where the role does its
+  job without it?
+  - If there is, say which run that is and what the agent does in it. Review findings are
+    missing on the first build, and that is how the builder knows it is the first.
+  - If there is not, tell the agent to stop at once. A role with a reporting tool stops by
+    ending without calling it, which fails the step and the run. A role that reports nothing
+    stops by changing nothing and ending, and the run goes on.
+
+      yes   (findings)  If that reads `Not provided`, this is the first build.
+      yes   (the plan every iteration works from)  If that reads `Not provided`, stop at once:
+            do nothing, and end without calling `record_plan`.
+      no    The workflow always hands you a plan, so this never reads `Not provided`; if it ever
+            does, change nothing and report the plan back unchanged.
 - Two inputs of one type share one slot. A step that needs two strings declares a dataclass.
 - Never pass a round counter as an input. AGL tells repeated calls apart by itself, and a
   counter only breaks replay. A varying `commit=` is fine, because it is not an input.

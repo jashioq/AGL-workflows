@@ -5,7 +5,8 @@ never what it does. Report what is wrong, and change nothing.
 
 {{Spec}}
 
-It is a JSON object. `name` is the workflow's directory.
+It is a JSON object. `name` is the workflow's directory. If this or the check below reads
+`Not provided`, stop at once, and end without calling `record_review`.
 
 ## Whether it loads
 

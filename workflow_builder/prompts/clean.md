@@ -6,7 +6,7 @@ it reads, and never what it does.
 {{Spec}}
 
 It is a JSON object. `name` is the directory to clean. The rest says what the workflow has to
-keep doing.
+keep doing. If it reads `Not provided`, stop at once and change nothing.
 
 ## Findings from the last clean review
 

@@ -6,7 +6,8 @@ Report what is wrong with it, and change nothing.
 {{Spec}}
 
 It is a JSON object, and it is the yardstick. `name` is the directory that was written. `shape`
-and `roles` are what the person approved, and `decisions` is why.
+and `roles` are what the person approved, and `decisions` is why. If this or the check below
+reads `Not provided`, stop at once, and end without calling `record_review`.
 
 ## Whether it loads
 
@@ -33,7 +34,8 @@ says how the code breaks it.
    when run does not do what the spec says.
 2. **It follows every rule in the guidelines below.** Each comment or docstring is a finding.
 3. **The prompts.** Each one places exactly its accepted types, reads its inputs as JSON, and
-   says what `Not provided` means for each input.
+   says what `Not provided` means for each input: the run where the role works without it, or,
+   for an input it cannot work without, that the agent stops, as the guidelines put it.
 
 How code that meets both reads is judged after this loop, by a cleaner with rules of its own:
 its structure, its names, and where a statement sits against its loop. The build loop is capped,

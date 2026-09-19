@@ -6,7 +6,8 @@ that spec.
 
 {{str}}
 
-It is a JSON string, in their own words.
+It is a JSON string, in their own words. If it reads `Not provided`, stop at once: ask nothing,
+and end without calling `record_spec`.
 
 ## How the design goes
 
