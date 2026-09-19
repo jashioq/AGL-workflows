@@ -13,15 +13,17 @@ keep doing.
 {{Review}}
 
 If that reads `Not provided`, this is the first pass. Read the whole workflow and bring it in
-line with the guidelines below. Otherwise it is a JSON object, and its `findings` list what the
-clean reviewer found wrong with your cleaning. Fix those, and nothing else.
+line with the guidelines below. It has no comments yet, so read every line as someone new to it
+would, and give each line they would stop at its why. Otherwise it is a JSON object, and its
+`findings` list what the clean reviewer found wrong with your cleaning. Fix those, and nothing
+else.
 
 ## Your remit
 
 You may do these, following the guidelines:
 
-- add a one-line comment saying why, where a line needs one, and delete every comment that says
-  what its line does
+- add a one-line comment saying why to every line that needs one, worked out from the code and
+  the SDK, and delete every comment that says what its line does
 - change structure and wording for readability
 - collapse classes that earn nothing, including one named in `accepts=`, as the guidelines lay out
 

@@ -35,7 +35,6 @@ async def opened(run_terminal: Terminal) -> None:
 
 async def answer(question: str, options: tuple[str, ...]) -> str:
     said = await terminal.show(asking, question=question, options=options)
-    # The echoed answer throws off where the terminal redraws from, so old questions stay behind
     print("\x1b[2J\x1b[H", end="", file=sys.__stdout__, flush=True)
     return said
 

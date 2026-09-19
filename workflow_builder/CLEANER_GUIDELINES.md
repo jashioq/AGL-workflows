@@ -4,12 +4,18 @@ Each rule shows what to keep and what to change, taken from real workflows.
 
 ## Comments
 
-A comment is at most one line, and it goes only where a line needs a why. A comment that says
-what its line does is deleted, not shortened.
+Every line a reader would stop at and ask why gets a comment saying why, in one line. The builder
+writes none, so each one is added when cleaning. A comment that says what its line does is
+deleted, not shortened.
+
+Work the why out from the code and the SDK, which is all the next reader has. A comment explains
+the code as it stands, never how it came to be written or who asked for it.
 
 Write them in the voice of the ones people wrote by hand: plain words a colleague would say out
 loud, a spaced hyphen where a writer would reach for a dash, and no full stop needed.
 
+    add      # The echoed answer throws off where the terminal redraws from, so old questions stay behind
+     above   print("\x1b[2J\x1b[H", end="", file=sys.__stdout__, flush=True)
     keep     # If after MAX_ROUNDS review rounds issues are still found - stop.
     keep     # Both loops are capped because nobody is watching the agents answer each other
     delete   # Review and fix loop

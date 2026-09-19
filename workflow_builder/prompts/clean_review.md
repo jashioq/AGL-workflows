@@ -33,7 +33,9 @@ did.
    `accepts=` entry, the placeholder, what the prompt says about that input, and the steps that
    pass it all change with it. The value handed over stays the same. Check that all of these
    changed together. Do not report the collapse itself, and never ask for the class back.
-3. **The code follows every rule in the guidelines below.**
+3. **The code follows every rule in the guidelines below.** A line a reader would stop at with
+   no why beside it is a finding. So is a comment that says what its line does, or that tells
+   how the code came to be written.
 4. **It still matches the spec.**
 
 What the workflow does was settled by the build loop, so do not judge it again. Do not report
