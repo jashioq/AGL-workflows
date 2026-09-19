@@ -95,7 +95,7 @@ def designer() -> Role[Spec]:
     )
 
 
-@role(model=Claude.SONNET(effort=ClaudeEffort.MEDIUM), accepts=(Spec, Review))
+@role(model=Claude.SONNET(effort=ClaudeEffort.HIGH), accepts=(Spec, Review))
 def builder() -> Role[None]:
     return Role(
         name="build",

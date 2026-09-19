@@ -22,17 +22,26 @@ A failing check is the first finding. Quote it, and name the line that has to ch
 
 ## What to check
 
+This review is for two things: the workflow does what the spec says, and it is built by the
+rules in the guidelines below. Each finding names the line of the spec or the rule it breaks, and
+says how the code breaks it.
+
 1. **It does what the spec says.** Every role runs on its model, its effort and its
    restrictions. Every step runs in order, with what it is handed, what it reports and what it
    commits. Every loop has its cap. Anything the spec says that the code does not do is a
-   finding, and so is anything the code does that the spec does not say.
+   finding, and so is anything the code does that the spec does not say. Code that would fail
+   when run does not do what the spec says.
 2. **It follows every rule in the guidelines below.** Each comment or docstring is a finding.
 3. **The prompts.** Each one places exactly its accepted types, reads its inputs as JSON, and
    says what `Not provided` means for each input.
 
-Do not report preferences that neither the spec nor the guidelines settle, hypothetical future
-problems, or anything you would phrase as "consider". A finding is something that has to change
-before this is merged, and the fix you give for it has to meet the spec as well.
+How code that meets both reads is judged after this loop, by a cleaner with rules of its own:
+its structure, its names, and where a statement sits against its loop. The build loop is capped,
+and it needs every round it has for the spec and the guidelines.
+
+Do not report hypothetical future problems, or anything you would phrase as "consider". A
+finding is something that has to change before this is merged, and the fix you give for it has
+to meet the spec as well.
 
 ## How to report
 
