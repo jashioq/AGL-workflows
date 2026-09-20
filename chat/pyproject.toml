@@ -1,0 +1,9 @@
+[project]
+name = "chat"
+version = "0.1.0"
+
+[project.entry-points."agl.workflows"]
+chat = "chat:chat"
+
+[tool.agl]
+requires = "agents-gl>=0.0.8"
