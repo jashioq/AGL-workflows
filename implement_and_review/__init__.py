@@ -8,18 +8,21 @@ from .roles import Review, implementer, reviewer
 
 MAX_ROUNDS: Final = 3
 
+
 # Run parameters, supplied by the user
 @dataclass(frozen=True, slots=True)
 class Parameters:
     request: str = arg("-r", "--request", help="what you want done, in a sentence or two")
 
+
 # Define agents. 'watch' is a callback to display agent's activity string in the terminal.
 implementing = implementer(watch=partial(report, "OPUS"))
 reviewing = reviewer(watch=partial(report, "SOL"))
 
+
 @workflow
 async def implement_and_review(run: Run[Parameters]) -> None:
-    # Display 
+    # Display
     await run.terminal.show(board, since=monotonic())
 
     request = run.params.request
@@ -42,15 +45,11 @@ async def implement_and_review(run: Run[Parameters]) -> None:
             review,
             commit=f"fix what review round {round_number + 1} found",
         )
+
     findings = "\n".join(review.findings)
-
-    raise Stop(
-        f"{MAX_ROUNDS} review rounds and the last one still had findings:\n\n{findings}"
-    )
+    raise Stop(f"{MAX_ROUNDS} review rounds and the last one still had findings:\n\n{findings}")
 
 
-# The build runs before every review, so each round is judged against a tree that was run and
-# not only read. A project whose build command is empty hands the reviewer nothing to judge by.
 async def reviewed(run: Run[Parameters], request: str) -> Review:
     build = run.config["build"]
     if not build:
