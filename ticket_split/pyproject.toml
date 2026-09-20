@@ -1,0 +1,10 @@
+[project]
+name = "ticket_split"
+version = "0.1.0"
+
+[project.entry-points."agl.workflows"]
+ticket_split = "ticket_split:ticket_split"
+
+[tool.agl]
+requires = "agents-gl>=0.0.7"
+config = ["build"]
