@@ -15,7 +15,7 @@ from agl.sdk import (
     role,
     tool,
 )
-from .display import BLUE, ORANGE, said
+from .display import BLUE, ORANGE, quiet, said, waiting
 
 HAIKU: Final = "Haiku"
 # Short for the `gpt-5.6-luna` the OpenAI adapter's slug table asks its CLI for - the prompts
@@ -29,6 +29,10 @@ OPENING: Final = "Nothing has been said yet. You open this chat, so say your lin
 TWICE: Final = "You said the last line yourself. Listen for an answer before you say another."
 
 OPENS: Final = HAIKU
+COLOUR: Final = {HAIKU: ORANGE, LUNA: BLUE}
+
+# The one who opens is thinking from the moment the run starts, with nothing said for it to answer
+waiting(COLOUR[OPENS], OPENS)
 
 transcript: list[str] = []
 gone: set[str] = set()
@@ -52,23 +56,28 @@ class Nothing:
 # A session that ends frees the other side from its `listen`, or that one waits on a line nobody
 # is left to say - however it ended, and whether it got as far as the cap or not
 def ended(name: str) -> None:
+    quiet()
     gone.add(name)
     turn[_other(name)].set()
 
 
-def says(name: str, colour: str, cap: int) -> Tool:
+def says(name: str, cap: int) -> Tool:
     async def spoken(line: Line) -> ToolResult:
         if len(transcript) >= cap:
             return ToolResult(text=OVER, rejected=True)
         if transcript and transcript[-1].startswith(f"{name}:"):
             return ToolResult(text=TWICE, rejected=True)
         transcript.append(f"{name}: {line.message}")
-        said(colour, name, line.message)
+        said(COLOUR[name], name, line.message)
         # Woken whether the cap has just been reached or not: the other side is waiting on this
         # event either for a line to answer or to be told the chat is over
-        turn[_other(name)].set()
-        answered = "Said. Now listen for the answer."
-        return ToolResult(text=OVER if len(transcript) >= cap else answered)
+        other = _other(name)
+        turn[other].set()
+        if len(transcript) >= cap:
+            quiet()
+            return ToolResult(text=OVER)
+        waiting(COLOUR[other], other)
+        return ToolResult(text="Said. Now listen for the answer.")
 
     return tool("say", "Say your next line, which is how the other one hears you.", Line, spoken)
 
@@ -105,7 +114,7 @@ def haiku_speaker(cap: int) -> Role[None]:
         name="haiku",
         instructions=prompt_file("prompts/haiku.md"),
         restrictions=EVERYTHING,
-        tools=(says(HAIKU, ORANGE, cap), listens(HAIKU, cap)),
+        tools=(says(HAIKU, cap), listens(HAIKU, cap)),
     )
 
 
@@ -116,5 +125,5 @@ def luna_speaker(cap: int) -> Role[None]:
         name="luna",
         instructions=prompt_file("prompts/luna.md"),
         restrictions=EVERYTHING,
-        tools=(says(LUNA, BLUE, cap), listens(LUNA, cap)),
+        tools=(says(LUNA, cap), listens(LUNA, cap)),
     )
