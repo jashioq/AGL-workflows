@@ -113,7 +113,6 @@ def haiku_speaker(cap: int) -> Role[None]:
     return Role(
         name="haiku",
         instructions=prompt_file("prompts/haiku.md"),
-        restrictions=EVERYTHING,
         tools=(says(HAIKU, cap), listens(HAIKU, cap)),
     )
 
@@ -124,6 +123,5 @@ def luna_speaker(cap: int) -> Role[None]:
     return Role(
         name="luna",
         instructions=prompt_file("prompts/luna.md"),
-        restrictions=EVERYTHING,
         tools=(says(LUNA, cap), listens(LUNA, cap)),
     )

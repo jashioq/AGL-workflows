@@ -13,7 +13,6 @@ class Parameters:
     topic: str = arg("-r", "--topic", help="what the two of them talk about")
 
 
-# Bound here, so `agl workflows chat` checks each prompt against its `accepts=`
 talking_haiku = haiku_speaker(MAX_TURNS)
 talking_luna = luna_speaker(MAX_TURNS)
 
@@ -22,8 +21,6 @@ talking_luna = luna_speaker(MAX_TURNS)
 async def chat(run: Run[Parameters]) -> None:
     await opened(run.terminal, f"{HAIKU} and {LUNA}'s chat")
 
-    # A namespace runs one step at a time, so two agents at once is two namespaces - a worktree
-    # each, which neither of them so much as reads: the chat reaches them through their tools
     async with asyncio.TaskGroup() as group:
         group.create_task(talking(run, talking_haiku, HAIKU))
         group.create_task(talking(run, talking_luna, LUNA))
