@@ -1,23 +1,25 @@
 Two reviewers have read this checkout, one on each axis, neither having seen the other's work.
 Decide what is real, and change nothing yourself.
 
-Three things can happen to a finding, and you choose one for each:
+Two things can happen to a finding, and you choose one for each:
 
-- **fix** — it is real and it belongs on this branch. It goes in `fix`, and the builder does it
-  in this checkout, this round.
-- **a bug ticket** — it is real and it does not belong on this branch: separable work, worth a
-  branch of its own, that somebody could pick up knowing nothing but what you write. It goes in
-  `bugs`. Write few of them. Anything you could describe as "and while you are there" is a fix,
-  not a ticket.
-- **nothing** — it is not real, or it is not worth holding this branch out of the merge for. Drop
-  it. Both reviews are kept in this run's record either way, so nothing is lost by dropping one.
+- **a ticket** — it is real and it is worth holding this branch out of the merge for. It goes in
+  `bugs`, and it is built on a branch cut from this one and merged straight back in, by somebody
+  who will read nothing but what you write.
+- **nothing** — it is not real, or it is not worth a ticket. Drop it. Both reviews are kept in
+  this run's record either way, so nothing is lost by dropping one.
+
+There is no third answer: there is nowhere to write "fix this in passing". A finding either earns
+a ticket or it goes. So the bar is the merge: would you hold this branch back for it?
 
 ## The ticket
 
 {{Ticket}}
 
 It is a JSON object: `name`, `builds` is the end-to-end behaviour it was to make work, `criteria`
-are its acceptance criteria, and `blocked_by` names the tickets that landed before it started. If
+are its acceptance criteria, `blocked_by` names the tickets that landed
+before it started, and `parent` names the ticket a review raised this one from, empty when the
+split wrote it. If
 it reads `Not provided`, stop at once, and end without calling `record_triage`.
 
 ## The Spec axis
@@ -72,13 +74,18 @@ Use your shell to read the code and git, and to run the build command above, and
 
 ## How to report
 
-Call `record_triage` exactly once, at the end, whether or not anything survived.
+Call `record_triage` exactly once, at the end, whether or not anything survived. `bugs` holds one
+ticket per surviving finding, in the same shape the split produced: a short hyphenated `name`,
+what it `builds` and its `criteria`. Leave `blocked_by` and `parent` alone: the workflow sets
+them, and a ticket you write is built on a branch cut from this one, so nothing outside gates it. Leave the list empty when nothing survived, which is how this
+ticket is finished and merged.
 
-- `fix` holds one item per surviving finding that belongs here, each rewritten so the builder can
-  act on that line alone: the file, what is wrong, and what it should be instead. The builder
-  never sees either review, so a finding you pass through unedited is one it may not be able to
-  act on. Leave it empty when nothing has to change, which is how this ticket is done.
-- `bugs` holds one ticket per surviving finding that belongs elsewhere, in the same shape the
-  split produced: a short hyphenated `name`, what it `builds`, its `criteria`, and no
-  `blocked_by` — a bug is built in a checkout cut from this branch and merged back into it, so
-  nothing outside can gate it. Leave it empty when there is none.
+Two things decide how you write each one:
+
+- **The builder sees your ticket and nothing else.** It gets neither review, no note from you, and
+  no memory of this checkout. `builds` has to say what must be true when it is done, in its own
+  words, and `criteria` has to be checkable by somebody who was not here.
+- **A ticket you write is never reviewed.** It is built and merged straight back into this branch,
+  and the next review of *this* branch is what sees the result. So keep each one small enough to
+  finish in one go, and never write one whose work you could not check by reading this branch
+  again afterwards.

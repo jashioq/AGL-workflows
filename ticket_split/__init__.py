@@ -1,30 +1,22 @@
 import asyncio
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import Final
 from agl.sdk import Run, Stop, arg, workflow
-from .display import (
-    MERGED,
-    RUNNING,
-    WAITING,
-    at,
-    conflicting,
-    entered,
-    gate_refused,
-    listed,
-    opened,
-    resolved,
-    watching,
-)
+from .branches import checkout, land
+from .display import display
 from .roles import (
     Ticket,
     builder,
     interviewer,
+    raised,
     remember,
     spec_reviewer,
     splitter,
     standards_reviewer,
     triager,
+    watch,
 )
+from .turns import Turns
 
 MAX_CONCURRENT_TICKETS: Final = 3
 MAX_REVIEW_ROUNDS: Final = 3
@@ -37,7 +29,6 @@ class Parameters:
 
 interviewing = interviewer()
 splitting = splitter()
-# Bound here so `agl workflows` checks their prompts, and copied per ticket for its own activity
 building = builder()
 spec_reviewing = spec_reviewer()
 standards_reviewing = standards_reviewer()
@@ -46,92 +37,76 @@ triaging = triager()
 
 @workflow
 async def ticket_split(run: Run[Parameters]) -> None:
-    await opened(run.terminal, str(run.scope.label))
+    """Turn what the person asked for into a spec, split it into tickets, and build them all."""
+    await display.open(run.terminal, str(run.scope.label))
 
-    entered("Interview")
+    display.phase("Interview")
     spec = await run.step(interviewing, run.params.request)
-    # Every later role may need the spec and none always does, so it is a tool and not an input
     remember(spec)
 
-    entered("Split tickets")
+    display.phase("Split tickets")
     tickets = await run.step(splitting, spec)
 
-    entered("Build")
-    slots = asyncio.Semaphore(MAX_CONCURRENT_TICKETS)
-    landed = {ticket.name: asyncio.Event() for ticket in tickets.tickets}
+    display.phase("Build")
+    await work_every(Turns(MAX_CONCURRENT_TICKETS), run, tickets.tickets)
+
+
+async def work_every(turns: Turns, run: Run[Parameters], tickets: list[Ticket]) -> None:
+    """Work every ticket given, each in its own task, returning once all of them have landed.
+
+    Serves both the tickets the split produced and the tickets a review raises."""
     async with asyncio.TaskGroup() as group:
-        for ticket in tickets.tickets:
-            listed(ticket.name)
-            group.create_task(worked(run, ticket, slots, landed))
+        for ticket in tickets:
+            display.pending(ticket.name, ticket.parent)
+            group.create_task(work_on(turns, run, ticket))
 
 
-async def worked(
-    target: Run[Parameters],
-    ticket: Ticket,
-    slots: asyncio.Semaphore,
-    landed: dict[str, asyncio.Event],
-) -> None:
-    for blocker in ticket.blocked_by:
-        await landed[blocker].wait()
-
-    bugs: list[Ticket] = []
-    async with slots:
-        child = target.worktree(ticket.name)
-        at(ticket.name, RUNNING)
-        builds = replace(building, on_activity=watching(ticket.name))
-        against_spec = replace(spec_reviewing, on_activity=watching(ticket.name))
-        against_standards = replace(standards_reviewing, on_activity=watching(ticket.name))
-        triages = replace(triaging, on_activity=watching(ticket.name))
-        gate = target.config["build"]
-        await child.step(builds, ticket, gate, commit=f"build {ticket.name}")
-        for round_number in range(MAX_REVIEW_ROUNDS):
-            # Two steps rather than one gather: a namespace runs one step at a time, and what the
-            # axes buy is a context each rather than the wall clock
-            spec = await child.step(against_spec, ticket, gate)
-            standards = await child.step(against_standards, ticket)
-            triaged = await child.step(triages, ticket, spec, standards, gate)
-            # A bug found while reviewing a bug has nowhere further down to be cut from
-            if len(child.scope.namespaces) == 1:
-                bugs.extend(triaged.bugs)
-            if not triaged.fix:
+async def work_on(turns: Turns, run: Run[Parameters], ticket: Ticket) -> None:
+    """Carry one ticket from its first build through its reviews to its merge."""
+    for round_number in range(MAX_REVIEW_ROUNDS):
+        async with turns.turn(ticket):
+            display.working(ticket.name)
+            if not round_number:
+                await build(run, ticket)
+            if ticket.parent:
                 break
-            if round_number == MAX_REVIEW_ROUNDS - 1:
-                findings = "\n".join(f"- {one}" for one in triaged.fix)
-                raise Stop(
-                    f"{MAX_REVIEW_ROUNDS} review rounds on {ticket.name} and triage still "
-                    f"wants these fixed:\n\n{findings}"
-                )
-            await child.step(
-                builds,
-                ticket,
-                triaged,
-                gate,
-                commit=f"fix what review round {round_number + 1} found on {ticket.name}",
-            )
+            bugs = await review(run, ticket)
+        if not bugs:
+            break
+        if round_number == MAX_REVIEW_ROUNDS - 1:
+            raise Stop(unfinished(ticket.name, bugs))
+        display.waiting(ticket.name)
+        await work_every(turns, run, raised(ticket, bugs))
 
-    at(ticket.name, WAITING)
-    async with asyncio.TaskGroup() as group:
-        for number, bug in enumerate(bugs, start=1):
-            # A namespace is run-wide, and nothing outside its parent's branch can gate a bug
-            named = replace(bug, name=f"{ticket.name}-{number}-{bug.name}", blocked_by=())
-            landed[named.name] = asyncio.Event()
-            listed(named.name, ticket.name)
-            group.create_task(worked(child, named, slots, landed))
-
-    await merged(target, child, ticket.name)
-    at(ticket.name, MERGED)
-    landed[ticket.name].set()
+    await land(run, ticket)
+    display.merged(ticket.name)
+    await turns.landed(ticket.name)
 
 
-async def merged(target: Run[Parameters], child: Run[Parameters], name: str) -> None:
-    landing = await child.integrate()
-    while landing.conflicted:
-        if landing.refused_by_the_gate:
-            # The gate undid the landing in the target, so what needs fixing is still this branch
-            gate_refused(name, (await child.verify("pwd")).output.strip())
-        else:
-            conflicting(name, (await target.verify("pwd")).output.strip())
-        # A person is answering this, so nothing caps it and nothing else lands here until it ends
-        await asyncio.sleep(5)
-        await landing.retry()
-    resolved(name)
+async def build(run: Run[Parameters], ticket: Ticket) -> None:
+    """Ask an agent to make the ticket true in its own checkout, and commit what it wrote.
+
+    The project's build command goes in with it, because that is what its merge is judged on."""
+    await checkout(run, ticket).step(
+        watch(building, ticket.name),
+        ticket,
+        run.config["build"],
+        commit=f"build {ticket.name}",
+    )
+
+
+async def review(run: Run[Parameters], ticket: Ticket) -> list[Ticket]:
+    """Read a ticket's work on both axes and hand back the tickets that still have to be done.
+
+    Each axis is a step with a context of its own, and a third triages findings."""
+    child, name, gate = checkout(run, ticket), ticket.name, run.config["build"]
+    spec = await child.step(watch(spec_reviewing, name), ticket, gate)
+    standards = await child.step(watch(standards_reviewing, name), ticket)
+    triaged = await child.step(watch(triaging, name), ticket, spec, standards, gate)
+    return triaged.bugs
+
+
+def unfinished(name: str, bugs: list[Ticket]) -> str:
+    """Say what a review still wanted after the last round it was allowed."""
+    wanted = "\n".join(f"- {bug.name}: {bug.builds}" for bug in bugs)
+    return f"{MAX_REVIEW_ROUNDS} reviews of {name} and the last one still found work:\n\n{wanted}"

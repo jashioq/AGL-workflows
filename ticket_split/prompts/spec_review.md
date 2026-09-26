@@ -15,7 +15,9 @@ nothing here about naming, duplication, structure or style unless the ticket ask
 {{Ticket}}
 
 It is a JSON object: `name`, `builds` is the end-to-end behaviour it was to make work, `criteria`
-are its acceptance criteria, and `blocked_by` names the tickets that landed before it started. It
+are its acceptance criteria, `blocked_by` names the tickets that landed
+before it started, and `parent` names the ticket a review raised this one from, empty when the
+split wrote it. It
 is the yardstick. If it reads `Not provided`, stop at once, and end without calling
 `record_spec_review`.
 

@@ -1,12 +1,9 @@
 import sys
-from collections.abc import Callable
 from dataclasses import dataclass
-from functools import partial
 from time import monotonic
 from typing import Final
 from agl.sdk import Choice, Row, Rows, Screen, Terminal, TextInput
 
-# Short codes, because the adapter sizes a row by its bytes and truecolor spends 19 on each span
 BLUE: Final = "\x1b[94m"
 PURPLE: Final = "\x1b[95m"
 GREEN: Final = "\x1b[92m"
@@ -22,7 +19,6 @@ RUNNING: Final = "IN PROGRESS"
 WAITING: Final = "WAITING"
 MERGED: Final = "MERGED"
 
-# Keeps the run apart from the warnings agl prints before it starts
 PADDING: Final = [Row("")] * 3
 
 NAME: Final = 22
@@ -30,13 +26,11 @@ ACTIVITY: Final = 26
 STATUS: Final = 13
 HEADLINE: Final = 50
 
-phase = {"name": "", "line": ""}
-conflict = {"ticket": "", "todo": ""}
-terminal: Terminal
-
 
 @dataclass(slots=True)
 class Line:
+    """What one ticket's row on the board is showing."""
+
     parent: str
     status: str = PENDING
     activity: str = ""
@@ -44,128 +38,138 @@ class Line:
     ended: float = 0.0
 
 
-lines: dict[str, Line] = {}
+class Display:
+    """The run on one screen: its name and timer, the phase it is in, and a row per ticket.
 
+    `open` and `ask` reach the terminal and wait; every other method only records what the
+    next frame will draw."""
 
-async def opened(run_terminal: Terminal, label: str) -> None:
-    global terminal
-    terminal = run_terminal
-    await terminal.show(board, label=label, since=monotonic())
+    _terminal: Terminal
 
+    def __init__(self) -> None:
+        self._phase = ""
+        self._activity = ""
+        self._conflicted = ""
+        self._todo = ""
+        self._lines: dict[str, Line] = {}
 
-def entered(name: str) -> None:
-    phase["name"] = name
-    phase["line"] = ""
+    async def open(self, terminal: Terminal, label: str) -> None:
+        """Put the board up and leave it there for the rest of the run."""
+        self._terminal = terminal
+        await terminal.show(self._board, label=label, since=monotonic())
 
+    async def ask(self, question: str, options: tuple[str, ...]) -> str:
+        """Put a question to the person and wait for what they pick or type.
 
-def report(line: str) -> None:
-    phase["line"] = line
+        Clears the screen afterwards, so the next frame redraws from the top."""
+        said = await self._terminal.show(self._asking, question=question, options=options)
+        print("\x1b[2J\x1b[H", end="", file=sys.__stdout__, flush=True)
+        return said
 
+    def phase(self, name: str) -> None:
+        """Name the phase the run has reached, and clear what the last agent was doing."""
+        self._phase = name
+        self._activity = ""
 
-def listed(name: str, parent: str = "") -> None:
-    lines[name] = Line(parent)
+    def activity(self, line: str) -> None:
+        """Show what the single agent of the interview or the split is doing."""
+        self._activity = line
 
+    def activity_on(self, ticket: str, line: str) -> None:
+        """Show what the agent working a ticket is doing, on that ticket's row."""
+        self._lines[ticket].activity = line
 
-def at(name: str, status: str) -> None:
-    line = lines[name]
-    line.status = status
-    if status == RUNNING:
-        line.started = monotonic()
-    if status == MERGED:
-        line.ended = monotonic()
+    def pending(self, ticket: str, parent: str = "") -> None:
+        """Put a ticket on the board, indented under the ticket a review raised it from."""
+        self._lines[ticket] = Line(parent)
 
+    def working(self, ticket: str) -> None:
+        """Mark a ticket as having an agent on it, and start its timer."""
+        self._lines[ticket].status = RUNNING
+        self._lines[ticket].started = monotonic()
 
-def watching(name: str) -> Callable[[str], None]:
-    return partial(noted, name)
+    def waiting(self, ticket: str) -> None:
+        """Mark a ticket as past its own work and waiting on its tickets or on its merge."""
+        self._lines[ticket].status = WAITING
 
+    def merged(self, ticket: str) -> None:
+        """Mark a ticket as landed, and stop its timer."""
+        self._lines[ticket].status = MERGED
+        self._lines[ticket].ended = monotonic()
 
-def noted(name: str, line: str) -> None:
-    lines[name].activity = line
+    def conflicted(self, ticket: str, where: str) -> None:
+        """Show a merge conflict, naming the checkout it has to be resolved in."""
+        self._conflicted = ticket
+        self._todo = f"git add what you fix in {where} - retried every 5s"
 
+    def refused(self, ticket: str, where: str) -> None:
+        """Show a refused merge, naming the checkout whose build has to pass."""
+        self._conflicted = ticket
+        self._todo = f"the build failed after merging - fix and commit in {where}"
 
-def conflicting(ticket: str, where: str) -> None:
-    conflict["ticket"] = ticket
-    conflict["todo"] = f"git add what you fix in {where} - retried every 5s"
+    def cleared(self, ticket: str) -> None:
+        """Take a ticket's merge banner down, leaving any other ticket's standing."""
+        if self._conflicted == ticket:
+            self._conflicted, self._todo = "", ""
 
+    def _board(self, *, label: str, since: float) -> Screen:
+        return Screen(
+            Rows([
+                *PADDING,
+                Row(f"{BLUE}{label}{RESET}  {YELLOW}{_clock(since, monotonic())}{RESET}"),
+                Row(""),
+                *self._banner(),
+                Row(f"{PURPLE}{self._phase}{RESET}  {WHITE}{self._activity[:HEADLINE]}{RESET}"),
+                Row(""),
+                *(self._row(ticket) for ticket in self._ordered()),
+            ])
+        )
 
-def gate_refused(ticket: str, where: str) -> None:
-    conflict["ticket"] = ticket
-    conflict["todo"] = f"the build failed after merging - fix and commit in {where}"
+    def _asking(self, *, question: str, options: tuple[str, ...]) -> Screen[str]:
+        choices = [Choice(f"{WHITE}{option}{GREEN}", value=option) for option in options]
+        return Screen(
+            Rows([
+                *PADDING,
+                *self._banner(),
+                *(Row(f"{WHITE}{line}{GREEN}") for line in question.splitlines()),
+            ]),
+            [*choices, TextInput(f"{WHITE}Answer in your own words", maps=str.strip)],
+        )
 
-
-# Two targets can each hold a landing, so a banner is cleared only by the ticket that raised it
-def resolved(ticket: str) -> None:
-    if conflict["ticket"] == ticket:
-        conflict.update({"ticket": "", "todo": ""})
-
-
-async def answer(question: str, options: tuple[str, ...]) -> str:
-    said = await terminal.show(asking, question=question, options=options)
-    # The echoed answer throws off where the terminal redraws from, so old questions stay behind
-    print("\x1b[2J\x1b[H", end="", file=sys.__stdout__, flush=True)
-    return said
-
-
-def board(*, label: str, since: float) -> Screen:
-    return Screen(
-        Rows([
-            *PADDING,
-            Row(f"{BLUE}{label}{RESET}  {YELLOW}{_clock(since, monotonic())}{RESET}"),
+    def _banner(self) -> list[Row]:
+        if not self._conflicted:
+            return []
+        return [
+            Row(f"{RED}MERGE CONFLICT: {self._conflicted}{RESET}"),
+            Row(f"{FADED_RED}{self._todo}{RESET}"),
             Row(""),
-            *_banner(),
-            Row(f"{PURPLE}{phase['name']}{RESET}  {WHITE}{phase['line'][:HEADLINE]}{RESET}"),
-            Row(""),
-            *(_line(name) for name in _ordered()),
-        ])
-    )
+        ]
+
+    def _ordered(self) -> list[str]:
+        """Every ticket in the order it is drawn, each followed by the tickets raised from it."""
+        shown: list[str] = []
+        for ticket, line in self._lines.items():
+            if not line.parent:
+                shown.append(ticket)
+                shown.extend(one for one, under in self._lines.items() if under.parent == ticket)
+        return shown
+
+    def _row(self, ticket: str) -> Row:
+        """One ticket's row: its name, what it is doing, its status and its timer.
+
+        Padded here and drawn as one cell: a terminal counts colour codes toward a width."""
+        line = self._lines[ticket]
+        bright = line.status == RUNNING
+        named = f"    {ticket.removeprefix(line.parent + '-')}" if line.parent else ticket
+        return Row(
+            f"{_colour(line.parent, bright)}{_column(named, NAME)}"
+            f"{WHITE if bright else FADED}{_column(line.activity, ACTIVITY)}"
+            f"{_column(line.status, STATUS)}"
+            f"{YELLOW}{_elapsed(line)}{RESET}"
+        )
 
 
-def asking(*, question: str, options: tuple[str, ...]) -> Screen[str]:
-    # agl numbers the answers itself, so each line ends by turning the number after it green
-    choices = [Choice(f"{WHITE}{option}{GREEN}", value=option) for option in options]
-    # One row per line, or the grid rewraps a round of questions
-    return Screen(
-        Rows([
-            *PADDING,
-            *_banner(),
-            *(Row(f"{WHITE}{line}{GREEN}") for line in question.splitlines()),
-        ]),
-        # Typing is always offered - the answer the agent did not think of is the one worth having
-        [*choices, TextInput(f"{WHITE}Answer in your own words", maps=str.strip)],
-    )
-
-
-def _banner() -> list[Row]:
-    if not conflict["ticket"]:
-        return []
-    return [
-        Row(f"{RED}MERGE CONFLICT: {conflict['ticket']}{RESET}"),
-        Row(f"{FADED_RED}{conflict['todo']}{RESET}"),
-        Row(""),
-    ]
-
-
-def _ordered() -> list[str]:
-    shown: list[str] = []
-    for name, line in lines.items():
-        if not line.parent:
-            shown.append(name)
-            shown.extend(bug for bug, under in lines.items() if under.parent == name)
-    return shown
-
-
-def _line(name: str) -> Row:
-    line = lines[name]
-    bright = line.status == RUNNING
-    # A bug already sits under its parent here, so its name is drawn without the parent it carries
-    named = f"    {name.removeprefix(line.parent + '-')}" if line.parent else name
-    # One escape a span and one to close: every byte of them counts toward the row's width
-    return Row(
-        f"{_colour(line.parent, bright)}{_column(named, NAME)}"
-        f"{WHITE if bright else FADED}{_column(line.activity, ACTIVITY)}"
-        f"{_column(line.status, STATUS)}"
-        f"{YELLOW}{_elapsed(line)}{RESET}"
-    )
+display = Display()
 
 
 def _colour(parent: str, bright: bool) -> str:
@@ -175,7 +179,7 @@ def _colour(parent: str, bright: bool) -> str:
 
 
 def _column(text: str, width: int) -> str:
-    # Cut two short of the column so a cell filling it still has a gap before the next one
+    """Text cut and padded to a fixed width, keeping a gap before the next column."""
     return f"{text[: width - 2]:<{width}}"
 
 

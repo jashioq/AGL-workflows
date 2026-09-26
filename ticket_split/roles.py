@@ -1,5 +1,6 @@
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
+from functools import partial
 from agl.sdk import (
     Claude,
     ClaudeEffort,
@@ -12,7 +13,7 @@ from agl.sdk import (
     role,
     tool,
 )
-from .display import answer, report
+from .display import display
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,6 +63,10 @@ class Ticket:
         "start immediately",
         default=(),
     )
+    parent: str = describe(
+        "leave this empty: the workflow fills it in with the ticket a review raised this one from",
+        default="",
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,13 +92,9 @@ class StandardsReview:
 
 @dataclass(frozen=True, slots=True)
 class Triage:
-    fix: list[str] = describe(
-        "every finding that is real and belongs in the worktree under review, each rewritten so "
-        "the builder can act on that line alone; empty when nothing has to change"
-    )
     bugs: list[Ticket] = describe(
-        "one ticket per finding that is real and does not belong in the worktree under review; "
-        "empty when there is none"
+        "one ticket per finding that is real and worth holding this branch out of the merge for, "
+        "each small enough to build in one go; empty when nothing has to change"
     )
 
 
@@ -103,27 +104,28 @@ class Asked:
     options: tuple[str, ...] = describe("answers to offer, each worded as the answer", default=())
 
 
-# `read_the_spec` takes no arguments, and a tool payload is a dataclass whatever it carries
 @dataclass(frozen=True, slots=True)
 class Nothing:
     ...
 
 
-# A tool handler is handed its payload and nothing else, so the spec reaches one this way
 spec_recorded: Spec
 
 
 def remember(spec: Spec) -> None:
+    """Keep the spec where the tool that hands it to later agents can reach it."""
     global spec_recorded
     spec_recorded = spec
 
 
 async def answered(asked: Asked) -> ToolResult:
-    said = await answer(asked.question, asked.options)
+    """Put an agent's question to the person and give their answer back to it."""
+    said = await display.ask(asked.question, asked.options)
     return ToolResult(text=said or "They typed nothing, so use your own judgement.")
 
 
 async def handed_over(_: Nothing) -> ToolResult:
+    """Give an agent the spec that every ticket in this run came out of."""
     return ToolResult(text=json.dumps(asdict(spec_recorded), indent=2))
 
 
@@ -167,13 +169,14 @@ record_standards_review = reporting_tool(
 
 record_triage = reporting_tool(
     "record_triage",
-    "Record what the builder fixes here and what becomes a ticket of its own. Call it once.",
+    "Record the findings that survive, each as a ticket of its own. Call it exactly once.",
     Triage,
 )
 
 
 @role(model=Claude.OPUS(effort=ClaudeEffort.HIGH), accepts=(str,))
 def interviewer() -> Role[Spec]:
+    """The agent that questions the person until nothing is left open, then writes the spec."""
     return Role(
         name="interview",
         instructions=prompt_file("prompts/interview.md"),
@@ -182,12 +185,13 @@ def interviewer() -> Role[Spec]:
             Restriction.NO_VCS_WRITES,
         },
         tools=(ask, record_spec),
-        on_activity=report,
+        on_activity=display.activity,
     )
 
 
 @role(model=Claude.OPUS(effort=ClaudeEffort.HIGH), accepts=(Spec,))
 def splitter() -> Role[Tickets]:
+    """The agent that cuts the spec into tickets and has the breakdown approved."""
     return Role(
         name="split",
         instructions=prompt_file("prompts/split.md"),
@@ -198,12 +202,13 @@ def splitter() -> Role[Tickets]:
             Restriction.NO_NETWORK,
         },
         tools=(ask, record_tickets),
-        on_activity=report,
+        on_activity=display.activity,
     )
 
 
-@role(model=Claude.SONNET(effort=ClaudeEffort.HIGH), accepts=(Ticket, Triage, str))
+@role(model=Claude.SONNET(effort=ClaudeEffort.HIGH), accepts=(Ticket, str))
 def builder() -> Role[None]:
+    """The agent that makes one ticket true in the checkout it is given."""
     return Role(
         name="build",
         instructions=prompt_file("prompts/build.md"),
@@ -214,6 +219,7 @@ def builder() -> Role[None]:
 
 @role(model=Claude.OPUS(effort=ClaudeEffort.HIGH), accepts=(Ticket, str))
 def spec_reviewer() -> Role[SpecReview]:
+    """The agent that asks whether the work does what its ticket asked for."""
     return Role(
         name="spec-review",
         instructions=prompt_file("prompts/spec_review.md"),
@@ -226,9 +232,11 @@ def spec_reviewer() -> Role[SpecReview]:
     )
 
 
-# No `read_the_spec`: this axis is the repository's own conventions, and the spec is the other's
 @role(model=Claude.OPUS(effort=ClaudeEffort.HIGH), accepts=(Ticket,))
 def standards_reviewer() -> Role[StandardsReview]:
+    """The agent that asks whether the work follows how this repository writes code.
+
+    It is given the ticket and nothing else, so its reading stays its own."""
     return Role(
         name="standards-review",
         instructions=prompt_file("prompts/standards_review.md"),
@@ -246,6 +254,7 @@ def standards_reviewer() -> Role[StandardsReview]:
     accepts=(Ticket, SpecReview, StandardsReview, str),
 )
 def triager() -> Role[Triage]:
+    """The agent that reads both reviews and decides which findings become tickets."""
     return Role(
         name="triage",
         instructions=prompt_file("prompts/triage.md"),
@@ -256,3 +265,23 @@ def triager() -> Role[Triage]:
         },
         tools=(ask, read_the_spec, record_triage),
     )
+
+
+def watch[P](role: Role[P], ticket: str) -> Role[P]:
+    """The same role, reporting what it does against one ticket's row on the board."""
+    return replace(role, on_activity=partial(display.activity_on, ticket))
+
+
+def raised(ticket: Ticket, bugs: list[Ticket]) -> list[Ticket]:
+    """The tickets a review asked for, each named after the ticket it was found in.
+
+    Numbered because a name is taken across the whole run, and carrying no blockers."""
+    return [
+        replace(
+            bug,
+            name=f"{ticket.name}-{number}-{bug.name}",
+            blocked_by=(),
+            parent=ticket.name,
+        )
+        for number, bug in enumerate(bugs, start=1)
+    ]

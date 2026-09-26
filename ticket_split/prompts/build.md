@@ -1,24 +1,19 @@
 Implement the work described in the ticket below. This checkout is yours alone and holds only
 this ticket's work; other tickets are being built elsewhere at the same time.
 
+Some tickets came out of the split at the start of the run, and some were written by a review of
+work already done. They are the same thing to you: a ticket says what has to be true when you are
+finished, and you make it true. You are not told which kind this one is, and it does not change
+what you do.
+
 ## The ticket
 
 {{Ticket}}
 
 It is a JSON object: `name`, `builds` is the end-to-end behaviour to make work, `criteria` are the
-acceptance criteria, and `blocked_by` names the tickets that landed before this one started. If it
+acceptance criteria, `blocked_by` names the tickets that landed before this one started, and
+`parent` names the ticket a review raised this one from, empty when the split wrote it. If it
 reads `Not provided`, stop at once and write nothing.
-
-## What triage wants fixed
-
-{{Triage}}
-
-If that reads `Not provided`, this is the first build of this ticket. Otherwise it is a JSON
-object. Two reviewers read this checkout, one against the ticket and one against the repository's
-standards, and triage judged what they found: `fix` is everything that is real and yours, and it
-is what you do in this pass - read the work already here, fix every one of them, and change
-nothing else. Its `bugs` are separate tickets, already being built in checkouts of their own:
-leave them alone.
 
 ## The build command
 
