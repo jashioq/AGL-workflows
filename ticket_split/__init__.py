@@ -1,7 +1,7 @@
 import asyncio
 from dataclasses import dataclass, replace
 from typing import Final
-from agl.sdk import Run, Stop, arg, workflow
+from agl.sdk import Role, Run, Stop, arg, workflow
 from .branches import checkout, land
 from .display import display
 from .roles import (
@@ -75,7 +75,6 @@ async def work_on(turns: Turns, run: Run[Parameters], ticket: Ticket) -> None:
                 await build(run, ticket)
             if ticket.parent:
                 break
-            display.reviewing(ticket.name)
             triaged = await review(run, ticket, History(rounds))
         if not triaged.bugs:
             break
@@ -86,6 +85,7 @@ async def work_on(turns: Turns, run: Run[Parameters], ticket: Ticket) -> None:
         display.waiting(ticket.name)
         await work_every(turns, run, bugs)
 
+    display.waiting(ticket.name)
     await land(run, ticket)
     display.merged(ticket.name)
     await turns.landed(ticket.name)
@@ -104,14 +104,30 @@ async def build(run: Run[Parameters], ticket: Ticket) -> None:
 
 
 async def review(run: Run[Parameters], ticket: Ticket, history: History) -> Triage:
-    """Read a ticket's work on both axes and decide which findings still have to be done.
+    """Read a ticket's work on both axes at once and decide which findings still have to be done.
 
     Each axis is a step with a context of its own, and a third triages findings against what the
-    earlier rounds raised."""
+    earlier rounds raised. Steps in one checkout take turns, so the standards axis, which only
+    reads git, gets a checkout of its own cut from the ticket's, a fresh one each round to see
+    that round's work. The spec axis stays in the ticket's, where its build has already run."""
     child, name, gate = checkout(run, ticket), ticket.name, run.config["build"]
-    spec = await child.step(watch(spec_reviewing, name), ticket, gate)
-    standards = await child.step(watch(standards_reviewing, name), ticket)
-    return await child.step(watch(triaging, name), ticket, spec, standards, history, gate)
+    aside = child.worktree(f"{name}-standards-{len(history.rounds) + 1}")
+    async with asyncio.TaskGroup() as group:
+        spec = group.create_task(reading(child, spec_reviewing, name, "spec", ticket, gate))
+        standards = group.create_task(
+            reading(aside, standards_reviewing, name, "standards", ticket)
+        )
+    return await reading(
+        child, triaging, name, "triage", ticket, spec.result(), standards.result(), history, gate
+    )
+
+
+async def reading[R](
+    run: Run[Parameters], role: Role[R], ticket: str, agent: str, *inputs: object
+) -> R:
+    """Take one review step, showing its agent and timer on the ticket's row while it runs."""
+    with display.reviewing(ticket, agent):
+        return await run.step(watch(role, ticket), *inputs)
 
 
 def unfinished(name: str, bugs: list[Ticket]) -> str:

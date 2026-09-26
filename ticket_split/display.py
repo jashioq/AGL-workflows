@@ -1,5 +1,7 @@
 import sys
-from dataclasses import dataclass
+from collections.abc import Iterator
+from contextlib import contextmanager
+from dataclasses import dataclass, field
 from time import monotonic
 from typing import Final
 from agl.sdk import Choice, Row, Rows, Screen, Terminal, TextInput
@@ -24,7 +26,7 @@ PADDING: Final = [Row("")] * 3
 
 NAME: Final = 22
 ACTIVITY: Final = 26
-STATUS: Final = 13
+STATUS: Final = 40
 HEADLINE: Final = 50
 
 
@@ -37,6 +39,7 @@ class Line:
     activity: str = ""
     started: float = 0.0
     ended: float = 0.0
+    reviewers: dict[str, float] = field(default_factory=dict)
 
 
 class Display:
@@ -89,9 +92,18 @@ class Display:
         self._lines[ticket].status = RUNNING
         self._lines[ticket].started = monotonic()
 
-    def reviewing(self, ticket: str) -> None:
-        """Mark a ticket as having its work read by the reviewers and then triaged."""
-        self._lines[ticket].status = REVIEWING
+    @contextmanager
+    def reviewing(self, ticket: str, agent: str) -> Iterator[None]:
+        """Mark a ticket as in review, naming one review agent and timing it for the block.
+
+        Several can be open on one ticket at once, and each is shown for as long as it runs."""
+        line = self._lines[ticket]
+        line.status = REVIEWING
+        line.reviewers[agent] = monotonic()
+        try:
+            yield
+        finally:
+            del line.reviewers[agent]
 
     def waiting(self, ticket: str) -> None:
         """Mark a ticket as past its own work and waiting on its tickets or on its merge."""
@@ -169,7 +181,7 @@ class Display:
         return Row(
             f"{_colour(line.parent, bright)}{_column(named, NAME)}"
             f"{WHITE if bright else FADED}{_column(line.activity, ACTIVITY)}"
-            f"{_column(line.status, STATUS)}"
+            f"{_column(_status(line), STATUS)}"
             f"{YELLOW}{_elapsed(line)}{RESET}"
         )
 
@@ -186,6 +198,15 @@ def _colour(parent: str, bright: bool) -> str:
 def _column(text: str, width: int) -> str:
     """Text cut and padded to a fixed width, keeping a gap before the next column."""
     return f"{text[: width - 2]:<{width}}"
+
+
+def _status(line: Line) -> str:
+    """A ticket's status, followed in review by each agent reading it and how long it has run."""
+    if not line.reviewers:
+        return line.status
+    now = monotonic()
+    agents = ", ".join(f"{agent} {_clock(since, now)}" for agent, since in line.reviewers.items())
+    return f"{line.status}: {agents}"
 
 
 def _elapsed(line: Line) -> str:
