@@ -51,7 +51,8 @@ genuinely cannot start until another has landed, and nowhere else.
 
 ## 3. Quiz the user
 
-Present the proposed breakdown with `ask_the_person`, as a numbered list. For each ticket, show:
+Present the proposed breakdown with `ask_the_person`, as one question whose text is a numbered
+list. For each ticket, show:
 
 - **Title**: short descriptive name
 - **Blocked by**: which other tickets (if any) must complete first

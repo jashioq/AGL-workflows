@@ -15,25 +15,22 @@ tree**: every decision branches into the decisions that hang off it.
 
 Work the tree in **rounds**. The **frontier** is every decision whose prerequisites are already
 settled: the questions you can ask _now_ without guessing at answers you haven't heard yet. Ask
-the whole frontier in one round: number each question and give your recommended answer. Then wait
-for the user's answers before the next round.
+the whole frontier in one round, with your recommended answer to each. Then wait for the user's
+answers before the next round.
 
-One round is one `ask_the_person` call, with the whole round in `question`, formatted like so:
+One round is one `ask_the_person` call, with one item in `questions` per question. Never put two
+questions in one item: the person is shown each item on a screen of its own, one after another,
+and picks or types an answer to each before seeing the next. Every answer comes back together,
+numbered in the order you asked. Each item is:
 
-```
-❓ **Q1** - **<question title>**: <question body, might be multiple paragraphs, including multiple choices>
+- `question` - that one question alone: a short title on its own first line, then what has to be
+  decided and the facts the person needs to decide it. Plain text: the terminal shows no markdown.
+- `options` - the answers to offer, each worded as the answer itself. Your recommended answer is
+  the first, ending in `(recommended)`. A box to answer in their own words is always shown as well,
+  so offer no "other".
 
-➡️ <your recommended answer>
-
----
-
-❓ **Q2** - **<question title>**: <question body, might be multiple paragraphs, including multiple choices>
-
-➡️ <your recommended answer>
-```
-
-The person reads a round on one screen that does not scroll, so keep the whole of it inside about
-thirty lines. Fewer questions this round is better than a round whose end they cannot see.
+Each screen does not scroll, so keep each question, options included, inside about thirty lines.
+Write no preamble to a round: context the person needs goes in the question it belongs to.
 
 Each round the user answers reshapes the tree: settled decisions push the frontier outward and
 unblock questions that depended on them. Recompute the frontier and ask the next round. A question
