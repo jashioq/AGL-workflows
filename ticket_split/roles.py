@@ -99,18 +99,9 @@ class Triage:
 
 
 @dataclass(frozen=True, slots=True)
-class Question:
-    question: str = describe("one question alone, in full, as plain text; it gets a screen of its own")
-    options: tuple[str, ...] = describe(
-        "answers to offer, each worded as the answer, your recommended one first", default=()
-    )
-
-
-@dataclass(frozen=True, slots=True)
 class Asked:
-    questions: list[Question] = describe(
-        "the questions to ask, one item each, shown one screen at a time in this order"
-    )
+    question: str = describe("what you are asking, in full; one question per call, never several")
+    options: tuple[str, ...] = describe("answers to offer, each worded as the answer", default=())
 
 
 @dataclass(frozen=True, slots=True)
@@ -128,22 +119,9 @@ def remember(spec: Spec) -> None:
 
 
 async def answered(asked: Asked) -> ToolResult:
-    """Put an agent's questions to the person one screen at a time, and give every answer back.
-
-    The answers come back numbered in the order asked, since the agent already holds the questions."""
-    if not asked.questions:
-        return ToolResult(text="Ask at least one question.", rejected=True)
-    total = len(asked.questions)
-    said = [
-        await display.ask(one.question, one.options, f"{number}/{total}" if total > 1 else "")
-        for number, one in enumerate(asked.questions, start=1)
-    ]
-    return ToolResult(
-        text="\n".join(
-            f"{number}. {answer or 'They typed nothing, so use your own judgement.'}"
-            for number, answer in enumerate(said, start=1)
-        )
-    )
+    """Put an agent's question to the person and give their answer back to it."""
+    said = await display.ask(asked.question, asked.options)
+    return ToolResult(text=said or "They typed nothing, so use your own judgement.")
 
 
 async def handed_over(_: Nothing) -> ToolResult:
@@ -153,7 +131,7 @@ async def handed_over(_: Nothing) -> ToolResult:
 
 ask = tool(
     "ask_the_person",
-    "Ask the person running this workflow one or more questions, and wait for every answer.",
+    "Ask the person running this workflow a question, and wait for their answer.",
     Asked,
     answered,
 )

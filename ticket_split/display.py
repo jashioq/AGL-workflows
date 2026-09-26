@@ -58,14 +58,11 @@ class Display:
         self._terminal = terminal
         await terminal.show(self._board, label=label, since=monotonic())
 
-    async def ask(self, question: str, options: tuple[str, ...], place: str = "") -> str:
+    async def ask(self, question: str, options: tuple[str, ...]) -> str:
         """Put a question to the person and wait for what they pick or type.
 
-        `place` says where it falls in a round, like `2/4`, and is empty for a question alone.
         Clears the screen afterwards, so the next frame redraws from the top."""
-        said = await self._terminal.show(
-            self._asking, question=question, options=options, place=place
-        )
+        said = await self._terminal.show(self._asking, question=question, options=options)
         print("\x1b[2J\x1b[H", end="", file=sys.__stdout__, flush=True)
         return said
 
@@ -128,13 +125,12 @@ class Display:
             ])
         )
 
-    def _asking(self, *, question: str, options: tuple[str, ...], place: str) -> Screen[str]:
+    def _asking(self, *, question: str, options: tuple[str, ...]) -> Screen[str]:
         choices = [Choice(f"{WHITE}{option}{GREEN}", value=option) for option in options]
         return Screen(
             Rows([
                 *PADDING,
                 *self._banner(),
-                *([Row(f"{YELLOW}question {place}{RESET}"), Row("")] if place else []),
                 *(Row(f"{WHITE}{line}{GREEN}") for line in question.splitlines()),
             ]),
             [*choices, TextInput(f"{WHITE}Answer in your own words", maps=str.strip)],

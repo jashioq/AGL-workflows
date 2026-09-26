@@ -18,19 +18,14 @@ settled: the questions you can ask _now_ without guessing at answers you haven't
 the whole frontier in one round, with your recommended answer to each. Then wait for the user's
 answers before the next round.
 
-One round is one `ask_the_person` call, with one item in `questions` per question. Never put two
-questions in one item: the person is shown each item on a screen of its own, one after another,
-and picks or types an answer to each before seeing the next. Every answer comes back together,
-numbered in the order you asked. Each item is:
+Ask each question with its own `ask_the_person` call, one after another, never two in one call:
+the person answers one question per screen. `question` is that one question in full, as plain
+text, since the terminal shows no markdown: a short title on its first line, then what has to be
+decided and the facts the person needs to decide it. `options` are the answers to offer, each
+worded as the answer, your recommended one first and ending in `(recommended)`. The tool will show
+a text input option automatically for them to answer in their own words, so offer no "other".
 
-- `question` - that one question alone: a short title on its own first line, then what has to be
-  decided and the facts the person needs to decide it. Plain text: the terminal shows no markdown.
-- `options` - the answers to offer, each worded as the answer itself. Your recommended answer is
-  the first, ending in `(recommended)`. A box to answer in their own words is always shown as well,
-  so offer no "other".
-
-Each screen does not scroll, so keep each question, options included, inside about thirty lines.
-Write no preamble to a round: context the person needs goes in the question it belongs to.
+A screen does not scroll, so keep each question, options included, inside about thirty lines.
 
 Each round the user answers reshapes the tree: settled decisions push the frontier outward and
 unblock questions that depended on them. Recompute the frontier and ask the next round. A question
