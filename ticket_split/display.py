@@ -16,6 +16,7 @@ RESET: Final = "\x1b[0m"
 
 PENDING: Final = "PENDING"
 RUNNING: Final = "IN PROGRESS"
+REVIEWING: Final = "IN REVIEW"
 WAITING: Final = "WAITING"
 MERGED: Final = "MERGED"
 
@@ -88,6 +89,10 @@ class Display:
         self._lines[ticket].status = RUNNING
         self._lines[ticket].started = monotonic()
 
+    def reviewing(self, ticket: str) -> None:
+        """Mark a ticket as having its work read by the reviewers and then triaged."""
+        self._lines[ticket].status = REVIEWING
+
     def waiting(self, ticket: str) -> None:
         """Mark a ticket as past its own work and waiting on its tickets or on its merge."""
         self._lines[ticket].status = WAITING
@@ -159,7 +164,7 @@ class Display:
 
         Padded here and drawn as one cell: a terminal counts colour codes toward a width."""
         line = self._lines[ticket]
-        bright = line.status == RUNNING
+        bright = line.status in (RUNNING, REVIEWING)
         named = f"    {ticket.removeprefix(line.parent + '-')}" if line.parent else ticket
         return Row(
             f"{_colour(line.parent, bright)}{_column(named, NAME)}"

@@ -94,7 +94,19 @@ class StandardsReview:
 class Triage:
     bugs: list[Ticket] = describe(
         "one ticket per finding that is real and worth holding this branch out of the merge for, "
-        "each small enough to build in one go; empty when nothing has to change"
+        "and per finding raised before that the person said how to fix, each small enough to "
+        "build in one go; empty when nothing has to change"
+    )
+    accepted: list[str] = describe(
+        "one line per finding raised before that the person chose to leave as it is, saying what "
+        "it is; empty when they chose none"
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class History:
+    rounds: list[Triage] = describe(
+        "what triage decided at each earlier review of this ticket, oldest first; empty at its first"
     )
 
 
@@ -251,10 +263,12 @@ def standards_reviewer() -> Role[StandardsReview]:
 
 @role(
     model=Claude.OPUS(effort=ClaudeEffort.HIGH),
-    accepts=(Ticket, SpecReview, StandardsReview, str),
+    accepts=(Ticket, SpecReview, StandardsReview, History, str),
 )
 def triager() -> Role[Triage]:
-    """The agent that reads both reviews and decides which findings become tickets."""
+    """The agent that reads both reviews and decides which findings become tickets.
+
+    A finding an earlier round already raised is put to the person instead of decided again."""
     return Role(
         name="triage",
         instructions=prompt_file("prompts/triage.md"),
@@ -272,10 +286,12 @@ def watch[P](role: Role[P], ticket: str) -> Role[P]:
     return replace(role, on_activity=partial(display.activity_on, ticket))
 
 
-def raised(ticket: Ticket, bugs: list[Ticket]) -> list[Ticket]:
+def raised(ticket: Ticket, bugs: list[Ticket], earlier: list[Triage]) -> list[Ticket]:
     """The tickets a review asked for, each named after the ticket it was found in.
 
-    Numbered because a name is taken across the whole run, and carrying no blockers."""
+    Numbered on from the earlier rounds' because a name is taken across the whole run, and a bug
+    raised again is often named as it was the first time. Carrying no blockers."""
+    first = 1 + sum(len(one.bugs) for one in earlier)
     return [
         replace(
             bug,
@@ -283,5 +299,5 @@ def raised(ticket: Ticket, bugs: list[Ticket]) -> list[Ticket]:
             blocked_by=(),
             parent=ticket.name,
         )
-        for number, bug in enumerate(bugs, start=1)
+        for number, bug in enumerate(bugs, start=first)
     ]

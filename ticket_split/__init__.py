@@ -1,11 +1,13 @@
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Final
 from agl.sdk import Run, Stop, arg, workflow
 from .branches import checkout, land
 from .display import display
 from .roles import (
+    History,
     Ticket,
+    Triage,
     builder,
     interviewer,
     raised,
@@ -62,7 +64,10 @@ async def work_every(turns: Turns, run: Run[Parameters], tickets: list[Ticket]) 
 
 
 async def work_on(turns: Turns, run: Run[Parameters], ticket: Ticket) -> None:
-    """Carry one ticket from its first build through its reviews to its merge."""
+    """Carry one ticket from its first build through its reviews to its merge.
+
+    Every round's triage is kept, so the next one can tell a finding it has seen before."""
+    rounds: list[Triage] = []
     for round_number in range(MAX_REVIEW_ROUNDS):
         async with turns.turn(ticket):
             display.working(ticket.name)
@@ -70,13 +75,16 @@ async def work_on(turns: Turns, run: Run[Parameters], ticket: Ticket) -> None:
                 await build(run, ticket)
             if ticket.parent:
                 break
-            bugs = await review(run, ticket)
-        if not bugs:
+            display.reviewing(ticket.name)
+            triaged = await review(run, ticket, History(rounds))
+        if not triaged.bugs:
             break
         if round_number == MAX_REVIEW_ROUNDS - 1:
-            raise Stop(unfinished(ticket.name, bugs))
+            raise Stop(unfinished(ticket.name, triaged.bugs))
+        bugs = raised(ticket, triaged.bugs, rounds)
+        rounds = [*rounds, replace(triaged, bugs=bugs)]
         display.waiting(ticket.name)
-        await work_every(turns, run, raised(ticket, bugs))
+        await work_every(turns, run, bugs)
 
     await land(run, ticket)
     display.merged(ticket.name)
@@ -95,15 +103,15 @@ async def build(run: Run[Parameters], ticket: Ticket) -> None:
     )
 
 
-async def review(run: Run[Parameters], ticket: Ticket) -> list[Ticket]:
-    """Read a ticket's work on both axes and hand back the tickets that still have to be done.
+async def review(run: Run[Parameters], ticket: Ticket, history: History) -> Triage:
+    """Read a ticket's work on both axes and decide which findings still have to be done.
 
-    Each axis is a step with a context of its own, and a third triages findings."""
+    Each axis is a step with a context of its own, and a third triages findings against what the
+    earlier rounds raised."""
     child, name, gate = checkout(run, ticket), ticket.name, run.config["build"]
     spec = await child.step(watch(spec_reviewing, name), ticket, gate)
     standards = await child.step(watch(standards_reviewing, name), ticket)
-    triaged = await child.step(watch(triaging, name), ticket, spec, standards, gate)
-    return triaged.bugs
+    return await child.step(watch(triaging, name), ticket, spec, standards, history, gate)
 
 
 def unfinished(name: str, bugs: list[Ticket]) -> str:
