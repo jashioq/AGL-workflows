@@ -6,18 +6,6 @@ be thrown away.
 
 {{str}}
 
-## Whether it builds
-
-{{VerifierOutcome}}
-
-It is a JSON object: what this project's build command did against the tree as it now stands,
-run just before you were called. `passed` is whether it exited 0, and `status` and `output` are
-what it returned. A failing build is the first finding: quote the part of `output` that names
-what broke, and say which file has to change.
-
-If it reads `Not provided`, this project configures no build command, so nothing was run. Review
-the tree by reading it, and do not report the absent build as a finding.
-
 ## What to review
 
 `git show HEAD` and `git log` are the change. Review the state of the working tree against what

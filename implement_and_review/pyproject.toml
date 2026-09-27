@@ -7,4 +7,3 @@ implement_and_review = "implement_and_review:implement_and_review"
 
 [tool.agl]
 requires = "agents-gl>=0.0.8"
-config = ["build"]

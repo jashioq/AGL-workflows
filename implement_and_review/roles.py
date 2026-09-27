@@ -6,8 +6,8 @@ from agl.sdk import (
     ReportingTool,
     Restriction,
     Role,
+    Tool,
     ToolResult,
-    VerifierOutcome,
     describe,
     prompt_file,
     reporting_tool,
@@ -35,12 +35,13 @@ async def answered(asked: Asked) -> ToolResult:
     return ToolResult(text=said or "They typed nothing, so use your own judgement.")
 
 
-ask_question = tool(
-    "ask_question",
-    "Ask the person running this workflow a question, and wait for their answer.",
-    Asked,
-    answered,
-)
+def ask_question() -> Tool:
+    return tool(
+        "ask_question",
+        "Ask the person running this workflow a question, and wait for their answer.",
+        Asked,
+        answered,
+    )
 
 
 def record_review() -> ReportingTool[Review]:
@@ -56,17 +57,18 @@ def implementer(watch: ActivityReporter) -> Role[None]:
     return Role(
         name="implement",
         instructions=prompt_file("prompts/implement.md"),
-        tools=(ask_question,),
+        restrictions={Restriction.NO_VCS_WRITES},
+        tools=(ask_question(),),
         on_activity=watch,
     )
 
 
-@role(model=OpenAI.SOL, accepts=(str, VerifierOutcome))
+@role(model=OpenAI.SOL, accepts=(str,))
 def reviewer(watch: ActivityReporter) -> Role[Review]:
     return Role(
         name="review",
         instructions=prompt_file("prompts/review.md"),
         restrictions={Restriction.NO_FILE_WRITES, Restriction.NO_VCS_WRITES},
-        tools=(ask_question, record_review()),
+        tools=(ask_question(), record_review()),
         on_activity=watch,
     )

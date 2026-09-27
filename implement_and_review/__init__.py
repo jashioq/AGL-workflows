@@ -3,7 +3,7 @@ from functools import partial
 from typing import Final
 from agl.sdk import Run, Stop, arg, workflow
 from .display import opened, report
-from .roles import Review, implementer, reviewer
+from .roles import implementer, reviewer
 
 MAX_ROUNDS: Final = 3
 
@@ -31,7 +31,7 @@ async def implement_and_review(run: Run[Parameters]) -> None:
 
     # Review and fix loop
     for round_number in range(MAX_ROUNDS):
-        review = await reviewed(run, request)
+        review = await run.step(reviewing, request)
         if not review.findings:
             return
 
@@ -47,11 +47,3 @@ async def implement_and_review(run: Run[Parameters]) -> None:
 
     findings = "\n".join(review.findings)
     raise Stop(f"{MAX_ROUNDS} review rounds and the last one still had findings:\n\n{findings}")
-
-
-async def reviewed(run: Run[Parameters], request: str) -> Review:
-    build = run.config["build"]
-    if not build:
-        return await run.step(reviewing, request)
-    report("build", build)
-    return await run.step(reviewing, request, await run.verify(build))
