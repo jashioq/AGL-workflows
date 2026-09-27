@@ -6,4 +6,4 @@ version = "0.1.0"
 implement_and_review = "implement_and_review:implement_and_review"
 
 [tool.agl]
-requires = "agents-gl>=0.0.8"
+requires = "agents-gl>=0.1.1"
