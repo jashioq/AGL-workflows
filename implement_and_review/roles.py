@@ -32,7 +32,7 @@ class Asked:
 
 async def answered(asked: Asked) -> ToolResult:
     said = await answer(asked.question, asked.options)
-    return ToolResult(text=said or "They typed nothing, so use your own judgement.")
+    return ToolResult(text=said)
 
 
 def ask_question() -> Tool:
