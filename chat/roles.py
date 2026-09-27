@@ -6,7 +6,6 @@ from agl.sdk import (
     ClaudeEffort,
     OpenAI,
     OpenAIEffort,
-    Restriction,
     Role,
     Tool,
     ToolResult,
@@ -18,110 +17,100 @@ from agl.sdk import (
 from .display import BLUE, ORANGE, quiet, said, waiting
 
 HAIKU: Final = "Haiku"
-# Short for the `gpt-5.6-luna` the OpenAI adapter's slug table asks its CLI for - the prompts
-# still name the model in full, because each of these two is told which model the other is
 LUNA: Final = "Luna"
-
-EVERYTHING: Final = frozenset(Restriction)
 
 OVER: Final = "The chat is over. Say nothing more, and end your turn now."
 OPENING: Final = "Nothing has been said yet. You open this chat, so say your line."
-TWICE: Final = "You said the last line yourself. Listen for an answer before you say another."
+NOT_YOUR_TURN: Final = "It is not your turn. Listen for the other one's line before you say yours."
 
 OPENS: Final = HAIKU
 COLOUR: Final = {HAIKU: ORANGE, LUNA: BLUE}
-
-# The one who opens is thinking from the moment the run starts, with nothing said for it to answer
-waiting(COLOUR[OPENS], OPENS)
-
-transcript: list[str] = []
-gone: set[str] = set()
-# One event a side, set by the other one's `say`, so a waiter is never woken by its own line
-turn: Final = {HAIKU: asyncio.Event(), LUNA: asyncio.Event()}
 
 
 @dataclass(frozen=True, slots=True)
 class Line:
     message: str = describe(
-        "your next line in the chat: 200 characters at most, one sentence, no name in front of it"
+        "your next line in the chat: 200 characters at most, no name in front of it"
     )
 
 
-# `listen` takes no arguments, and a tool payload is a dataclass whatever it carries
-@dataclass(frozen=True, slots=True)
-class Nothing:
-    ...
+class Conversation:
+    """What has been said so far, and whose turn it is to say the next line."""
 
+    def __init__(self, limit: int) -> None:
+        self.limit = limit
+        self.lines: list[str] = []
+        self.over = False
+        # Set while it is that side's turn to speak, which is what its `listen` waits for
+        self.turn = {HAIKU: asyncio.Event(), LUNA: asyncio.Event()}
+        self._hand_to(OPENS)
 
-# A session that ends frees the other side from its `listen`, or that one waits on a line nobody
-# is left to say - however it ended, and whether it got as far as the cap or not
-def ended(name: str) -> None:
-    quiet()
-    gone.add(name)
-    turn[_other(name)].set()
+    def tools(self, name: str) -> tuple[Tool, Tool]:
+        say = tool(
+            "say",
+            "Say your next line, which is how the other one hears you.",
+            Line,
+            lambda line: self.say(name, line.message),
+        )
+        listen = Tool(
+            name="listen",
+            description="Wait for the other one to say something, and read it. Takes no arguments.",
+            payload_schema={"type": "object", "properties": {}},
+            handler=lambda _: self.listen(name),
+        )
+        return say, listen
 
-
-def says(name: str, cap: int) -> Tool:
-    async def spoken(line: Line) -> ToolResult:
-        if len(transcript) >= cap:
+    async def say(self, name: str, message: str) -> ToolResult:
+        if self.over:
             return ToolResult(text=OVER, rejected=True)
-        if transcript and transcript[-1].startswith(f"{name}:"):
-            return ToolResult(text=TWICE, rejected=True)
-        transcript.append(f"{name}: {line.message}")
-        said(COLOUR[name], name, line.message)
-        # Woken whether the cap has just been reached or not: the other side is waiting on this
-        # event either for a line to answer or to be told the chat is over
-        other = _other(name)
-        turn[other].set()
-        if len(transcript) >= cap:
-            quiet()
+        if not self.turn[name].is_set():
+            return ToolResult(text=NOT_YOUR_TURN, rejected=True)
+        self.turn[name].clear()
+        self.lines.append(f"{name}: {message}")
+        said(COLOUR[name], name, message)
+        if len(self.lines) >= self.limit:
+            self.end()
             return ToolResult(text=OVER)
-        waiting(COLOUR[other], other)
+        self._hand_to(_other(name))
         return ToolResult(text="Said. Now listen for the answer.")
 
-    return tool("say", "Say your next line, which is how the other one hears you.", Line, spoken)
-
-
-def listens(name: str, cap: int) -> Tool:
-    async def heard(_: Nothing) -> ToolResult:
-        # Nothing would ever wake the one who opens, so it is told to speak rather than left to
-        # wait on a line the other one is itself waiting for
-        if not transcript and name == OPENS:
-            return ToolResult(text=OPENING)
-        await turn[name].wait()
-        turn[name].clear()
-        if len(transcript) >= cap or _other(name) in gone:
+    async def listen(self, name: str) -> ToolResult:
+        await self.turn[name].wait()
+        if self.over:
             return ToolResult(text=OVER)
-        return ToolResult(text=transcript[-1])
+        if not self.lines:
+            return ToolResult(text=OPENING)
+        return ToolResult(text=self.lines[-1])
 
-    return tool(
-        "listen",
-        "Wait for the other one to say something, and read it. Takes no arguments.",
-        Nothing,
-        heard,
-    )
+
+    def end(self) -> None:
+        self.over = True
+        quiet()
+        for turn in self.turn.values():
+            turn.set()
+
+    def _hand_to(self, name: str) -> None:
+        self.turn[name].set()
+        waiting(COLOUR[name], name)
 
 
 def _other(name: str) -> str:
     return LUNA if name == HAIKU else HAIKU
 
 
-# Haiku advertises no effort levels at all, so the CLI drops this one - written because a model
-# named without an effort runs at whatever its tool defaults to, which nobody here chose
 @role(model=Claude.HAIKU(effort=ClaudeEffort.LOW), accepts=(str,))
-def haiku_speaker(cap: int) -> Role[None]:
+def haiku_speaker(conversation: Conversation) -> Role[None]:
     return Role(
         name="haiku",
         instructions=prompt_file("prompts/haiku.md"),
-        tools=(says(HAIKU, cap), listens(HAIKU, cap)),
+        tools=conversation.tools(HAIKU),
     )
 
 
-# `low` is the bottom of what this model offers - its listing starts there and has no `minimal`
 @role(model=OpenAI.LUNA(effort=OpenAIEffort.LOW), accepts=(str,))
-def luna_speaker(cap: int) -> Role[None]:
+def luna_speaker(conversation: Conversation) -> Role[None]:
     return Role(
         name="luna",
         instructions=prompt_file("prompts/luna.md"),
-        tools=(says(LUNA, cap), listens(LUNA, cap)),
+        tools=conversation.tools(LUNA),
     )

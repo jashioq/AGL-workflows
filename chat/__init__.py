@@ -1,35 +1,33 @@
 import asyncio
 from dataclasses import dataclass
-from typing import Final
 from agl.sdk import Role, Run, Stop, arg, workflow
 from .display import opened
-from .roles import HAIKU, LUNA, ended, haiku_speaker, luna_speaker, transcript
-
-MAX_TURNS: Final = 20
+from .roles import HAIKU, LUNA, Conversation, haiku_speaker, luna_speaker
 
 
 @dataclass(frozen=True, slots=True)
 class Parameters:
     topic: str = arg("-r", "--topic", help="what the two of them talk about")
-
-
-talking_haiku = haiku_speaker(MAX_TURNS)
-talking_luna = luna_speaker(MAX_TURNS)
+    lines: int = arg("-l", "--lines", default=20, help="how many lines the chat ends after")
 
 
 @workflow
 async def chat(run: Run[Parameters]) -> None:
     await opened(run.terminal, f"{HAIKU} and {LUNA}'s chat")
 
+    conversation = Conversation(run.params.lines)
     async with asyncio.TaskGroup() as group:
-        group.create_task(talking(run, talking_haiku, HAIKU))
-        group.create_task(talking(run, talking_luna, LUNA))
+        group.create_task(talking(run, conversation, haiku_speaker(conversation)))
+        group.create_task(talking(run, conversation, luna_speaker(conversation)))
 
-    raise Stop(f"the chat ended after {len(transcript)} of the {MAX_TURNS} lines it is capped at")
+    raise Stop(
+        f"the chat ended after {len(conversation.lines)} of the {conversation.limit} lines it is "
+        f"capped at"
+    )
 
 
-async def talking(run: Run[Parameters], speaking: Role[None], name: str) -> None:
+async def talking(run: Run[Parameters], conversation: Conversation, speaking: Role[None]) -> None:
     try:
-        await run.worktree(name.lower()).step(speaking, run.params.topic)
+        await run.worktree(speaking.name).step(speaking, run.params.topic)
     finally:
-        ended(name)
+        conversation.end()

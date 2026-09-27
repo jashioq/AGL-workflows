@@ -32,7 +32,7 @@ not say twice in a row - `say` will refuse the second one and tell you to listen
 
 Every line you say:
 
-- Short. 200 characters at most, and one sentence, as you would say it out loud.
+- Short. 200 characters at most, as you would say it out loud.
 - On the topic, and answering what Haiku actually said rather than starting again.
 - New. Do not repeat a line either of you has already used, and do not sum up the chat.
 - Plain. No lists, no headings, no markdown, no emoji, and no name in front of it - the chat
