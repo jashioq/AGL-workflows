@@ -6,12 +6,15 @@ from agl.sdk import (
     ReportingTool,
     Restriction,
     Role,
+    ToolResult,
     VerifierOutcome,
     describe,
     prompt_file,
     reporting_tool,
     role,
+    tool,
 )
+from .display import answer
 
 
 @dataclass(frozen=True, slots=True)
@@ -19,6 +22,25 @@ class Review:
     findings: list[str] = describe(
         "each finding as one markdown item saying where and what is wrong; empty when there are none"
     )
+
+
+@dataclass(frozen=True, slots=True)
+class Asked:
+    question: str = describe("what you are asking, in full; one question per call, never several")
+    options: tuple[str, ...] = describe("answers to offer, each worded as the answer", default=())
+
+
+async def answered(asked: Asked) -> ToolResult:
+    said = await answer(asked.question, asked.options)
+    return ToolResult(text=said or "They typed nothing, so use your own judgement.")
+
+
+ask_question = tool(
+    "ask_question",
+    "Ask the person running this workflow a question, and wait for their answer.",
+    Asked,
+    answered,
+)
 
 
 def record_review() -> ReportingTool[Review]:
@@ -34,6 +56,7 @@ def implementer(watch: ActivityReporter) -> Role[None]:
     return Role(
         name="implement",
         instructions=prompt_file("prompts/implement.md"),
+        tools=(ask_question,),
         on_activity=watch,
     )
 
@@ -44,6 +67,6 @@ def reviewer(watch: ActivityReporter) -> Role[Review]:
         name="review",
         instructions=prompt_file("prompts/review.md"),
         restrictions={Restriction.NO_FILE_WRITES, Restriction.NO_VCS_WRITES},
-        tools=(record_review(),),
+        tools=(ask_question, record_review()),
         on_activity=watch,
     )

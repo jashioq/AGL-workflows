@@ -33,6 +33,10 @@ Look for, in this order:
 Do not report style preferences, hypothetical future problems, or anything you would phrase as
 "consider". A finding is something a maintainer would ask to have changed before merging.
 
+If whether something is a finding depends on what the person meant, ask them with
+`ask_question`, one question per call with your recommended option first, and put their answer in
+the finding.
+
 ## How to report
 
 Call `record_review` exactly once, at the end, whether or not you found anything.

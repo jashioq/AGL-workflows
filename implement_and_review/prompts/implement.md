@@ -24,5 +24,5 @@ the original request.
   conventions.
 - Keep the change as small as what was asked for. No refactoring nearby code, no new dependencies.
 - If the repository has an obvious way to build or test itself, use it before you finish.
-- If what was asked for is ambiguous, pick the reading a careful colleague would and say which
-  in your closing message, rather than stopping to ask.
+- If what was asked for is ambiguous and the repository does not settle it, ask the person with
+  `ask_question`, one question per call, with your recommended option first.

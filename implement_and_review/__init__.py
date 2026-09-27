@@ -1,9 +1,8 @@
 from dataclasses import dataclass
 from functools import partial
-from time import monotonic
 from typing import Final
 from agl.sdk import Run, Stop, arg, workflow
-from .display import board, report
+from .display import opened, report
 from .roles import Review, implementer, reviewer
 
 MAX_ROUNDS: Final = 3
@@ -23,7 +22,7 @@ reviewing = reviewer(watch=partial(report, "SOL"))
 @workflow
 async def implement_and_review(run: Run[Parameters]) -> None:
     # Display
-    await run.terminal.show(board, since=monotonic())
+    await opened(run.terminal)
 
     request = run.params.request
 
