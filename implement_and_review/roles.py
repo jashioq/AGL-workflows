@@ -2,7 +2,9 @@ from dataclasses import dataclass
 from agl.sdk import (
     ActivityReporter,
     Claude,
+    ClaudeEffort,
     OpenAI,
+    OpenAIEffort,
     ReportingTool,
     Restriction,
     Role,
@@ -52,7 +54,7 @@ def record_review() -> ReportingTool[Review]:
     )
 
 
-@role(model=Claude.OPUS, accepts=(str, Review))
+@role(model=Claude.OPUS(effort=ClaudeEffort.MEDIUM), accepts=(str, Review))
 def implementer(watch: ActivityReporter) -> Role[None]:
     return Role(
         name="implement",
@@ -63,7 +65,7 @@ def implementer(watch: ActivityReporter) -> Role[None]:
     )
 
 
-@role(model=OpenAI.SOL, accepts=(str,))
+@role(model=OpenAI.SOL(effort=OpenAIEffort.MEDIUM), accepts=(str,))
 def reviewer(watch: ActivityReporter) -> Role[Review]:
     return Role(
         name="review",
