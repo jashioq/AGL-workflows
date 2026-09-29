@@ -1,12 +1,21 @@
 import sys
 from time import monotonic
+from typing import Final
 from agl.sdk import Choice, Row, Rows, Screen, Terminal, TextInput
 
-now = {"agent": "", "line": ""}
+# The chat workflow's colours - orange for Claude, blue for OpenAI - and grey for the activity line,
+# so the agent's name is what stands out
+ORANGE: Final = "\x1b[38;5;209m"
+BLUE: Final = "\x1b[38;5;69m"
+GREY: Final = "\x1b[38;5;245m"
+RESET: Final = "\x1b[0m"
+
+now = {"colour": "", "agent": "", "line": ""}
 terminal: Terminal
 
 
-def report(agent: str, line: str) -> None:
+def report(colour: str, agent: str, line: str) -> None:
+    now["colour"] = colour
     now["agent"] = agent
     now["line"] = line
 
@@ -29,7 +38,7 @@ def board(*, since: float) -> Screen:
         Rows([
             Row(f"implement and review  {_elapsed(since)}"),
             Row(""),
-            Row(f"{now['agent']}  {now['line'][:60]}"),
+            Row(f"{now['colour']}{now['agent']}{RESET}  {GREY}{now['line'][:60]}{RESET}"),
         ])
     )
 

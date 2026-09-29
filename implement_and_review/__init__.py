@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from functools import partial
 from typing import Final
 from agl.sdk import Run, Stop, arg, workflow
-from .display import opened, report
+from .display import BLUE, ORANGE, opened, report
 from .roles import implementer, reviewer
 
 MAX_ROUNDS: Final = 3
@@ -15,8 +15,8 @@ class Parameters:
 
 
 # Define agents. 'watch' is a callback to display agent's activity string in the terminal.
-implementing = implementer(watch=partial(report, "OPUS"))
-reviewing = reviewer(watch=partial(report, "SOL"))
+implementing = implementer(watch=partial(report, ORANGE, "OPUS"))
+reviewing = reviewer(watch=partial(report, BLUE, "SOL"))
 
 
 @workflow
