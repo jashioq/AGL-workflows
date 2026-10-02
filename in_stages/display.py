@@ -16,6 +16,8 @@ RESET: Final = "\x1b[0m"
 
 AGENT: Final = "Sonnet"
 
+PADDING: Final = [Row("")] * 2
+
 
 @dataclass(slots=True)
 class Line:
@@ -50,6 +52,7 @@ def board(*, label: str, stages: int, since: float) -> Screen:
     shown = lines or [Line(f"Split into {stages} stages", started=since)]
     return Screen(
         Rows([
+            *PADDING,
             Row(
                 f"{YELLOW}{label}{RESET} - {done} of {len(lines) or stages} done - "
                 f"{PURPLE}{_clock(since, monotonic())}{RESET}"
