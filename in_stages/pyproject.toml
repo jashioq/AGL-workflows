@@ -1,0 +1,9 @@
+[project]
+name = "in_stages"
+version = "0.1.0"
+
+[project.entry-points."agl.workflows"]
+in_stages = "in_stages:in_stages"
+
+[tool.agl]
+requires = "agents-gl>=0.1.2"
